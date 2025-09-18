@@ -1,7 +1,10 @@
+import logging
 import socket
 import subprocess
 import re
 from typing import List, Optional, Tuple
+
+LOG = logging.getLogger(__name__)
 
 
 def get_local_ip() -> str:
@@ -18,15 +21,19 @@ def get_local_ip() -> str:
 
 def run_cmd(cmd: List[str]) -> str:
     try:
+        LOG.debug("Running command: %s", cmd)
         output = subprocess.check_output(cmd, stderr=subprocess.DEVNULL, encoding="utf-8", errors="ignore")
+        LOG.debug("Command output length: %d", len(output))
         return output
-    except Exception:
+    except Exception as exc:  # broad exception because command failure isn't fatal
+        LOG.exception("Command %s failed: %s", cmd, exc)
         return ""
 
 
 def get_wifi_ssid() -> Optional[str]:
     out = run_cmd(["netsh", "wlan", "show", "interfaces"])
     if not out:
+        LOG.debug("No output from netsh wlan show interfaces")
         return None
     m = re.search(r"^\s*SSID\s*:\s*(.+)$", out, re.MULTILINE)
     if m:
@@ -48,6 +55,7 @@ def parse_ipconfig_for_gateway_and_ip() -> Tuple[Optional[str], Optional[str]]:
         if ip_match:
             ip = ip_match.group(1)
             gw = gateway_match.group(1) if gateway_match else None
+            LOG.debug("Found adapter ip=%s gw=%s", ip, gw)
             return ip, gw
     return get_local_ip(), None
 
@@ -55,7 +63,9 @@ def parse_ipconfig_for_gateway_and_ip() -> Tuple[Optional[str], Optional[str]]:
 def list_wifi_profiles() -> List[str]:
     out = run_cmd(["netsh", "wlan", "show", "profiles"]) or ""
     profiles = re.findall(r"All User Profile\s*:\s*(.+)", out)
-    return [p.strip().strip('"') for p in profiles]
+    profs = [p.strip().strip('"') for p in profiles]
+    LOG.debug("Found wifi profiles: %s", profs)
+    return profs
 
 
 def get_wifi_password(profile: str) -> Optional[str]:
@@ -63,5 +73,7 @@ def get_wifi_password(profile: str) -> Optional[str]:
     out = run_cmd(cmd) or ""
     m = re.search(r"Key Content\s*:\s*(.+)", out)
     if m:
-        return m.group(1).strip()
+        pwd = m.group(1).strip()
+        LOG.debug("Password for profile %s length=%d", profile, len(pwd))
+        return pwd
     return None
