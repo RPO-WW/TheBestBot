@@ -1,25 +1,37 @@
+import asyncio
 import os
-import logging
+from loguru import logger
+from dotenv import load_dotenv, find_dotenv
+from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
+from private_chat import anketa
+from group_chat import setup_group_handlers
+from channel import setup_channel_handlers
 
-from bot import build_application
-from logconfig import setup_logging
-
-
-
-def main() -> None:
-	setup_logging()
-	LOG = logging.getLogger(__name__)
-
-	token = os.environ.get("BOT_TOKEN") or "REPLACE_WITH_YOUR_BOT_TOKEN"
-	if not token or token.startswith("REPLACE"):
-		LOG.error("Установите переменную окружения BOT_TOKEN и перезапустите бота.")
-		return
-
-	app = build_application(token)
-	LOG.info("Запуск бота...")
-	app.run_polling()
+load_dotenv(find_dotenv())
+TOKEN = os.getenv("TOKEN")
 
 
-if __name__ == "__main__":
-	main()
+async def main():
+    logger.add("file.log",
+               format="{time:YYYY-MM-DD at HH:mm:ss} | {level} | {message}",
+               rotation="3 days",
+               backtrace=True,
+               diagnose=True)
 
+    bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
+    dp = Dispatcher()
+
+    anketa(dp)
+    setup_group_handlers(dp)
+    setup_channel_handlers(dp, bot)
+
+    logger.info("Бот запущен")
+    try:
+        await dp.start_polling(bot)
+    finally:
+        await bot.session.close()
+        logger.info("Бот остановлен")
+
+if __name__ == '__main__':
+    asyncio.run(main())
