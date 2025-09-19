@@ -5,8 +5,14 @@ from dotenv import load_dotenv, find_dotenv
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 
+from bot.handlers import handlers_router
+
 load_dotenv(find_dotenv())
 TOKEN = os.getenv("TOKEN")
+
+dp = Dispatcher()
+
+dp.include_router(handlers_router)
 
 async def main():
     logger.add("file.log",
@@ -16,7 +22,7 @@ async def main():
                diagnose=True)
 
     bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
-    dp = Dispatcher()
+
 
 
     logger.info("Бот запущен")

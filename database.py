@@ -1,151 +1,111 @@
-"""Simple database layer for TheBestBot.
-
-This module provides a lightweight SQLite-backed `Database` class used by the
-bot to persist incoming JSON-like objects. The implementation stores the raw
-JSON (as text) plus a normalized SHA256 hash to support deduplication.
-
-Assumptions made:
-- Use SQLite via the stdlib `sqlite3` module.
-- Each record is a JSON-serializable mapping (Python dict) and may contain a
-  `pavilion` key which is commonly used by the bot flow. If `pavilion` is
-  missing the value stored will be NULL and searching by pavilion will simply
-  not return that record.
-
-This file is intentionally small and dependency-free so it works in constrained
-environments (e.g. simple hosting or CI).
-"""
-
-from __future__ import annotations
-
-import json
-import logging
 import sqlite3
-import hashlib
-from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional
-
-LOG = logging.getLogger(__name__)
+import re
+from typing import Dict, List, Optional, Any
 
 
-def _normalize_and_hash(obj: Dict[str, Any]) -> str:
-	"""Return a deterministic SHA256 hex digest for a JSON-serializable obj.
+class WiFiDB:
+    def __init__(self, db_path: str = "wifi_data.db"):
+        self.db_path = db_path
+        self.init_db()
 
-	We use `sort_keys=True` so semantically-equal dicts produce identical
-	hashes (helps deduplication).
-	"""
-	dumped = json.dumps(obj, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-	return hashlib.sha256(dumped.encode("utf-8")).hexdigest()
+    def init_db(self):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS wifi_networks (
+                    bssid TEXT PRIMARY KEY,
+                    frequency INTEGER NOT NULL,
+                    rssi INTEGER NOT NULL,
+                    ssid TEXT NOT NULL,
+                    timestamp INTEGER NOT NULL,
+                    channel_bandwidth TEXT NOT NULL,
+                    capabilities TEXT NOT NULL
+                )
+            """)
+            conn.commit()
 
+    def checker(self, data: Dict[str, Any]) -> bool:
+        try:
+            required_keys = [
+                "bssid", "frequency", "rssi",
+                "ssid", "timestamp", "channel_bandwidth", "capabilities"
+            ]
+            for key in required_keys:
+                if key not in data:
+                    raise ValueError(f"Отсутствует обязательное поле: {key}")
 
-class Database:
-	"""Simple SQLite-backed database helper.
+            bssid_pattern = r'^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$'
+            if not re.match(bssid_pattern, data["bssid"]):
+                raise ValueError("Неверный формат BSSID (ожидается XX:XX:XX:XX:XX:XX)")
 
-	Usage:
-	db = Database("./bot.db")
-	db.connect()
-	db.add_record({"pavilion": "A1", "name": "Stall 12"})
-	"""
+            if not isinstance(data["frequency"], int) or data["frequency"] <= 0:
+                raise ValueError("frequency должен быть положительным целым числом")
 
-	def __init__(self, path: str = ":memory:") -> None:
-		self.path = path
-		self._conn: Optional[sqlite3.Connection] = None
+            if not isinstance(data["rssi"], int) or not (-100 <= data["rssi"] <= 0):
+                raise ValueError("rssi должен быть целым числом от -100 до 0")
 
-	def connect(self) -> None:
-		if self._conn:
-			return
-		LOG.debug("Connecting to sqlite db at %s", self.path)
-		self._conn = sqlite3.connect(self.path, detect_types=sqlite3.PARSE_DECLTYPES)
-		self._conn.row_factory = sqlite3.Row
-		self._ensure_schema()
+            if not isinstance(data["timestamp"], int) or data["timestamp"] < 0:
+                raise ValueError("timestamp должен быть неотрицательным целым числом")
 
-	def close(self) -> None:
-		if self._conn:
-			LOG.debug("Closing sqlite connection")
-			self._conn.close()
-			self._conn = None
+            if not isinstance(data["ssid"], str) or len(data["ssid"]) == 0:
+                raise ValueError("ssid должен быть непустой строкой")
 
-	def _ensure_schema(self) -> None:
-		assert self._conn is not None
-		cur = self._conn.cursor()
-		cur.execute(
-			"""
-			CREATE TABLE IF NOT EXISTS records (
-				id INTEGER PRIMARY KEY AUTOINCREMENT,
-				pavilion TEXT,
-				data TEXT NOT NULL,
-				data_hash TEXT NOT NULL UNIQUE,
-				created_ts TEXT NOT NULL
-			)
-			"""
-		)
-		self._conn.commit()
+            if not isinstance(data["channel_bandwidth"], str) or data["channel_bandwidth"] not in ["20", "40", "80", "160"]:
+                raise ValueError("channel_bandwidth должен быть строкой: '20', '40', '80' или '160'")
 
-	def add_record(self, obj: Dict[str, Any]) -> Optional[int]:
-		"""Insert `obj` into the DB.
+            if not isinstance(data["capabilities"], str):
+                raise ValueError("capabilities должен быть строкой")
 
-		Returns the new row id, or None if the record was a duplicate and was
-		not inserted.
-		"""
-		if self._conn is None:
-			self.connect()
-		assert self._conn is not None
+            return True
 
-		data_hash = _normalize_and_hash(obj)
-		data_text = json.dumps(obj, ensure_ascii=False)
-		pavilion = obj.get("pavilion") if isinstance(obj, dict) else None
-		created_ts = datetime.utcnow().isoformat() + "Z"
+        except Exception as e:
+            print(f"[Ошибка валидации]: {e}")
+            return False
 
-		cur = self._conn.cursor()
-		try:
-			cur.execute(
-				"INSERT INTO records (pavilion, data, data_hash, created_ts) VALUES (?, ?, ?, ?)",
-				(pavilion, data_text, data_hash, created_ts),
-			)
-			self._conn.commit()
-			rowid = cur.lastrowid
-			LOG.debug("Inserted record id=%s pavilion=%s", rowid, pavilion)
-			return rowid
-		except sqlite3.IntegrityError:
-			# duplicate (data_hash unique)
-			LOG.info("Duplicate record ignored (hash=%s)", data_hash)
-			return None
+    def create(self, data: Dict[str, Any]) -> bool:
+        if not self.checker(data):
+            return False
 
-	def get_record(self, rowid: int) -> Optional[Dict[str, Any]]:
-		"""Return the record with `id==rowid` or None if not found."""
-		if self._conn is None:
-			self.connect()
-		assert self._conn is not None
-		cur = self._conn.cursor()
-		cur.execute("SELECT * FROM records WHERE id = ?", (rowid,))
-		row = cur.fetchone()
-		if not row:
-			return None
-		return {"id": row["id"], "pavilion": row["pavilion"], "data": json.loads(row["data"]), "created_ts": row["created_ts"]}
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO wifi_networks 
+                    (bssid, frequency, rssi, ssid, timestamp, channel_bandwidth, capabilities)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    data["bssid"],
+                    data["frequency"],
+                    data["rssi"],
+                    data["ssid"],
+                    data["timestamp"],
+                    data["channel_bandwidth"],
+                    data["capabilities"]
+                ))
+                conn.commit()
+                return True
+        except sqlite3.IntegrityError:
+            print("[Ошибка] Запись с таким BSSID уже существует.")
+            return False
+        except Exception as e:
+            print(f"[Ошибка создания]: {e}")
+            return False
 
-	def find_by_pavilion(self, pavilion: str) -> List[Dict[str, Any]]:
-		"""Return all records where `pavilion` equals the provided value."""
-		if self._conn is None:
-			self.connect()
-		assert self._conn is not None
-		cur = self._conn.cursor()
-		cur.execute("SELECT * FROM records WHERE pavilion = ? ORDER BY id", (pavilion,))
-		rows = cur.fetchall()
-		return [
-			{"id": r["id"], "pavilion": r["pavilion"], "data": json.loads(r["data"]), "created_ts": r["created_ts"]}
-			for r in rows
-		]
+    def read(self, bssid: Optional[str] = None) -> List[Dict[str, Any]]:
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
 
-	def all_records(self) -> Iterable[Dict[str, Any]]:
-		"""Yield all records in insertion order."""
-		if self._conn is None:
-			self.connect()
-		assert self._conn is not None
-		cur = self._conn.cursor()
-		cur.execute("SELECT * FROM records ORDER BY id")
-		for r in cur.fetchall():
-			yield {"id": r["id"], "pavilion": r["pavilion"], "data": json.loads(r["data"]), "created_ts": r["created_ts"]}
+                if bssid:
+                    cursor.execute("SELECT * FROM wifi_networks WHERE bssid = ?", (bssid,))
+                else:
+                    cursor.execute("SELECT * FROM wifi_networks")
 
+                rows = cursor.fetchall()
+                return [dict(row) for row in rows]
 
+<<<<<<< HEAD
 if __name__ == "__main__":
 	# simple smoke test when run directly
 	logging.basicConfig(level=logging.DEBUG)
@@ -157,3 +117,67 @@ if __name__ == "__main__":
 	print("id1", id1, "id2", id2)
 	print(list(db.all_records()))
 	db.close()
+=======
+        except Exception as e:
+            print(f"[Ошибка чтения]: {e}")
+            return []
+
+    def update(self, bssid: str, data: Dict[str, Any]) -> bool:
+        if not self.checker(data):
+            return False
+
+        existing = self.read(bssid)
+        if not existing:
+            print(f"[Ошибка] Запись с BSSID {bssid} не найдена для обновления.")
+            return False
+
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    UPDATE wifi_networks SET
+                        frequency = ?,
+                        rssi = ?,
+                        ssid = ?,
+                        timestamp = ?,
+                        channel_bandwidth = ?,
+                        capabilities = ?
+                    WHERE bssid = ?
+                """, (
+                    data["frequency"],
+                    data["rssi"],
+                    data["ssid"],
+                    data["timestamp"],
+                    data["channel_bandwidth"],
+                    data["capabilities"],
+                    bssid
+                ))
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            print(f"[Ошибка обновления]: {e}")
+            return False
+
+    def delete(self, bssid: str) -> bool:
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM wifi_networks WHERE bssid = ?", (bssid,))
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            print(f"[Ошибка удаления]: {e}")
+            return False
+
+    def crud_create(self, data):
+        return self.create(data)
+
+    def crud_read(self, bssid=None):
+        return self.read(bssid)
+
+    def crud_update(self, bssid, data):
+        return self.update(bssid, data)
+
+    def crud_delete(self, bssid):
+        return self.delete(bssid)
+>>>>>>> 0439f7a6780407746711b986ac2568dc07169e66

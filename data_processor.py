@@ -1,6 +1,5 @@
 import json
 from typing import List, Dict, Any, Set, Generator
-from tabulate import tabulate
 
 
 class DataProcessor:
