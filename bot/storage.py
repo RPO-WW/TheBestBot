@@ -1,10 +1,14 @@
+import logging
 import os
 import csv
+
+LOG = logging.getLogger(__name__)
 
 
 def ensure_data_dir(base: str) -> str:
     path = os.path.join(base, "data")
     os.makedirs(path, exist_ok=True)
+    LOG.debug("Ensured data dir: %s", path)
     return path
 
 
@@ -19,16 +23,19 @@ def save_row(base: str, data: dict) -> None:
         if not exists:
             writer.writerow(headers)
         writer.writerow(row)
+    LOG.info("Saved row to %s: %s", p, row)
 
 
 def load_table(base: str) -> list:
     dirp = ensure_data_dir(base)
     p = os.path.join(dirp, "table.csv")
     if not os.path.exists(p):
+        LOG.debug("Table file does not exist: %s", p)
         return []
     rows = []
     with open(p, newline='', encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for r in reader:
             rows.append(r)
+    LOG.info("Loaded %d rows from %s", len(rows), p)
     return rows

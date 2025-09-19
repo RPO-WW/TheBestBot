@@ -48,6 +48,7 @@ def format_network_info() -> str:
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    LOG.info("/start from chat_id=%s user=%s", update.effective_chat.id if update.effective_chat else None, update.effective_user and update.effective_user.id)
     text = (
         "<b>Привет! Я — маленький помощник сети.</b>\n\n"
         "Я могу показать текущий IP, имя Wi‑Fi сети, шлюз и помочь посмотреть сохранённые Wi‑Fi пароли.\n"
@@ -57,11 +58,13 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def network_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    LOG.info("/network requested by chat_id=%s", update.effective_chat.id if update.effective_chat else None)
     text = format_network_info()
     await update.message.reply_html(text)
 
 
 async def wifiprofiles_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    LOG.info("/wifiprofiles requested by chat_id=%s", update.effective_chat.id if update.effective_chat else None)
     profiles = network.list_wifi_profiles()
     if not profiles:
         await update.message.reply_html("<i>Сохранённых Wi‑Fi профилей не найдено.</i>")
@@ -74,6 +77,7 @@ async def wifiprofiles_command(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def wifipass_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    LOG.info("/wifipass requested by chat_id=%s args=%s", update.effective_chat.id if update.effective_chat else None, context.args)
     args = context.args
     if not args:
         await update.message.reply_html("Использование: <code>/wifipass имя_профиля</code>")
@@ -81,12 +85,15 @@ async def wifipass_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     profile = " ".join(args)
     pwd = network.get_wifi_password(profile)
     if pwd:
+        LOG.info("Found password for profile %s (len=%d)", profile, len(pwd))
         await update.message.reply_html(f"<b>Пароль для</b> <code>{html.escape(profile)}</code>:\n<code>{html.escape(pwd)}</code>")
     else:
+        LOG.info("Password for profile %s not found", profile)
         await update.message.reply_html(f"Не удалось найти пароль для <code>{html.escape(profile)}</code> (или отсутствуют права).")
 
 
 async def wifipass_all_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    LOG.info("/wifipass_all requested by chat_id=%s", update.effective_chat.id if update.effective_chat else None)
     profiles = network.list_wifi_profiles()
     if not profiles:
         await update.message.reply_html("<i>Сохранённых Wi‑Fi профилей не найдено.</i>")
@@ -112,6 +119,7 @@ def build_application(token: str) -> Application:
 
 
     async def fill_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        LOG.info("/fill start by chat_id=%s", update.effective_chat.id if update.effective_chat else None)
         await update.message.reply_html("<b>Заполнение записи.</b> Введите имя сети (SSID) или отправьте /skip, чтобы пропустить.")
         return NAME
 
@@ -141,6 +149,7 @@ def build_application(token: str) -> Application:
         text = update.message.text.strip() if update.message and update.message.text else ""
         context.user_data['note'] = text or "Отсутствует"
         storage.save_row(os.path.dirname(__file__), context.user_data)
+        LOG.info("Saved fill entry: %s", {k: context.user_data.get(k) for k in ('name','address')})
         await update.message.reply_html("Запись сохранена в таблицу.")
         return ConversationHandler.END
 
@@ -160,11 +169,13 @@ def build_application(token: str) -> Application:
             return NOTE
         context.user_data['note'] = "Отсутствует"
         storage.save_row(os.path.dirname(__file__), context.user_data)
+        LOG.info("Saved fill entry (skipped fields): %s", {k: context.user_data.get(k) for k in ('name','address')})
         await update.message.reply_html("Запись сохранена в таблицу.")
         return ConversationHandler.END
 
 
     async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        LOG.info("/cancel by chat_id=%s", update.effective_chat.id if update.effective_chat else None)
         await update.message.reply_html("Заполнение отменено.")
         return ConversationHandler.END
 
@@ -184,6 +195,7 @@ def build_application(token: str) -> Application:
 
 
     async def showtable(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        LOG.info("/showtable requested by chat_id=%s", update.effective_chat.id if update.effective_chat else None)
         rows = storage.load_table(os.path.dirname(__file__))
         if not rows:
             await update.message.reply_html("<i>Таблица пуста.</i>")
@@ -191,7 +203,6 @@ def build_application(token: str) -> Application:
         lines = ["<b>Таблица записей:</b>"]
         for i, r in enumerate(rows, 1):
             lines.append(f"{i}. SSID: <code>{html.escape(r.get('name','Отсутствует'))}</code> | IP: <code>{html.escape(r.get('address','Отсутствует'))}</code> | Пароль: <code>{html.escape(r.get('password','Отсутствует'))}</code> | Прим: <code>{html.escape(r.get('note','Отсутствует'))}</code>")
-        await Application.bot._send_message  # type: ignore
         await app.bot.send_message(chat_id=update.effective_chat.id, text="\n".join(lines), parse_mode="HTML")
 
     app.add_handler(CommandHandler('showtable', showtable))
