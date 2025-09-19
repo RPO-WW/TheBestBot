@@ -1,24 +1,7 @@
 import os
 from loguru import logger
-from bot import build_application
-import sys
 
-logger.configure(
-    handlers=[
-        {
-            "sink": "network_operations.log",
-            "rotation": "10 MB",
-            "retention": "7 days",
-            "level": "DEBUG",
-            "format": "{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}"
-        },
-        {
-            "sink": sys.stderr,
-            "level": "INFO",
-            "format": "<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{function}</cyan> | <level>{message}</level>"
-        }
-    ]
-)
+from bot import build_application
 
 # Настройка loguru
 logger.add(

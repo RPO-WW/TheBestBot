@@ -65,9 +65,9 @@ def load_table(base: str) -> list:
         
         logger.info(f"Загружено {len(rows)} записей из файла: {p}")
         logger.debug(f"Загруженные данные: {rows}")
-
+        
         return rows
-
+        
     except csv.Error as e:
         logger.error(f"Ошибка формата CSV в файле {p}: {e}")
         return []
