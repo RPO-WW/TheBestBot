@@ -1,21 +1,33 @@
+import asyncio
 import os
-import logging
+from loguru import logger
+from dotenv import load_dotenv, find_dotenv
+from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
 
-from bot import build_application
+load_dotenv(find_dotenv())
+TOKEN = os.getenv("TOKEN")
+
 
 logging.basicConfig(level=logging.INFO)
 
+async def main():
+    logger.add("file.log",
+               format="{time:YYYY-MM-DD at HH:mm:ss} | {level} | {message}",
+               rotation="3 days",
+               backtrace=True,
+               diagnose=True)
 
-def main() -> None:
-	token = os.environ.get("BOT_TOKEN") or "REPLACE_WITH_YOUR_BOT_TOKEN"
-	if not token or token.startswith("REPLACE"):
-		print("Установите переменную окружения BOT_TOKEN и перезапустите бота.")
-		return
-
-	app = build_application(token)
-	logging.info("Запуск бота...")
-	app.run_polling()
+    bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
+    dp = Dispatcher()
 
 
-if __name__ == "__main__":
-	main()
+    logger.info("Бот запущен")
+    try:
+        await dp.start_polling(bot)
+    finally:
+        await bot.session.close()
+        logger.info("Бот остановлен")
+
+if __name__ == '__main__':
+    asyncio.run(main())
