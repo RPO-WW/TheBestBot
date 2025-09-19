@@ -9,6 +9,8 @@ load_dotenv(find_dotenv())
 TOKEN = os.getenv("TOKEN")
 
 
+logging.basicConfig(level=logging.INFO)
+
 async def main():
     logger.add("file.log",
                format="{time:YYYY-MM-DD at HH:mm:ss} | {level} | {message}",
