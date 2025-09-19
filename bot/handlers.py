@@ -1,3 +1,228 @@
+"""Telegram bot handlers for TheBestBot.
+
+This module exposes async handlers for the main bot commands and a
+`build_application(token)` helper that registers them on a `telegram.ext.Application`.
+
+Handlers provided:
+- /start - greeting and help text
+- /find_net <pavilion> - look up pavilion data (uses `database.Database` if available)
+- /add_data - accept a single JSON object message and store it (deduplicated)
+- plus the existing network and wifi helpers which are preserved.
+
+The implementation keeps dependencies minimal and uses HTML-formatted replies.
+"""
+
+from __future__ import annotations
+
+import os
+import html
+import json
+import logging
+from typing import Any, Dict, List, Optional
+
+from telegram import Update, Message
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
+
+from . import network, storage
+
+try:
+    from database import Database
+except Exception:
+    Database = None  # type: ignore
+
+LOG = logging.getLogger(__name__)
+
+
+def _safe_reply_html(msg: Message, text: str) -> None:
+    """Send an HTML-formatted reply; catch and log exceptions."""
+    try:
+        # reply_html is a coroutine so callers should await. This helper is
+        # intended to be used within async handlers where `await` is used.
+        return msg.reply_html(text)
+    except Exception:
+        LOG.exception("Ошибка при отправке сообщения пользователю")
+
+
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    LOG.info("/start from %s", getattr(user, "id", "unknown"))
+
+    text = (
+        "<b>Привет! Я — бот-помощник TheBestBot.</b>\n\n"
+        "Я могу помочь с поиском павильонов и сохранением данных.\n\n"
+        "<b>Доступные команды</b>:\n"
+        "• <code>/start</code> — показать это сообщение.\n"
+        "• <code>/find_net &lt;номер_павильона&gt;</code> — найти записи по павильону.\n"
+        "• <code>/add_data</code> — добавляет JSON-объект, отправьте один корректный JSON в сообщении.\n"
+        "\nФормат JSON: <code>{\"pavilion\": \"A12\", \"name\": \"Продавец\", \"note\": \"Примечание\"}</code>\n"
+        "Поля необязательны, главное — корректный JSON-объект.\n"
+        "Если нужно — отправьте просто номер павильона и я попробую найти совпадения."
+    )
+    if update.message:
+        await update.message.reply_html(text)
+
+
+async def find_net_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Find records by pavilion. If a DB is available, query it; otherwise use CSV storage."""
+    user = update.effective_user
+    args = context.args
+    LOG.info("/find_net from %s args=%s", getattr(user, "id", "?"), args)
+
+    if not args and update.message and update.message.reply_to_message and update.message.reply_to_message.text:
+        # allow replying to a message that contains the pavilion
+        query = update.message.reply_to_message.text.strip()
+    else:
+        query = " ".join(args).strip()
+
+    if not query:
+        await update.message.reply_html("Использование: <code>/find_net номер_павильона</code>")
+        return
+
+    pavilion = query
+    results: List[Dict[str, Any]] = []
+
+    # Prefer Database if available
+    if Database is not None:
+        try:
+            db = Database()
+            db.connect()
+            results = db.find_by_pavilion(pavilion)
+            db.close()
+        except Exception:
+            LOG.exception("Ошибка при обращении к базе данных, попытаемся загрузить CSV")
+
+    if not results:
+        # Fallback to CSV table storage
+        rows = storage.load_table(os.path.dirname(__file__))
+        for r in rows:
+            if r.get("name") == pavilion or r.get("pavilion") == pavilion or r.get("address") == pavilion:
+                results.append(r)
+
+    if not results:
+        await update.message.reply_html(f"Ничего не найдено для: <code>{html.escape(pavilion)}</code>")
+        return
+
+    lines = [f"<b>Результаты поиска для</b> <code>{html.escape(pavilion)}</code>:"]
+    for r in results:
+        try:
+            name = html.escape(str(r.get("name") or r.get("pavilion") or "-"))
+            addr = html.escape(str(r.get("address") or "-"))
+            note = html.escape(str(r.get("note") or "-"))
+            lines.append(f"• {name} — IP: <code>{addr}</code> — Прим: <code>{note}</code>")
+        except Exception:
+            LOG.exception("Ошибка при форматировании строки результата")
+    await update.message.reply_html("\n".join(lines))
+
+
+async def add_data_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Accept a single JSON object (in the same message) and store it.
+
+    Usage: send `/add_data` followed by a JSON object in the same message, or
+    send `/add_data` and then the bot will prompt for the JSON in the next
+    message (current implementation expects the JSON in the same message).
+    """
+    user = update.effective_user
+    LOG.info("/add_data from %s", getattr(user, "id", "?"))
+
+    text = "".join(context.args) if context.args else (update.message.text or "")
+
+    # If user sent just '/add_data' without JSON, ask for it
+    # For simplicity we expect JSON in the same message after the command.
+    # Example: /add_data {"pavilion":"A1","name":"Seller"}
+    try:
+        # extract JSON substring after the command if present
+        if text.strip().startswith("/add_data"):
+            # remove the command itself
+            payload = text.replace("/add_data", "", 1).strip()
+        else:
+            payload = text.strip()
+
+        if not payload and update.message and update.message.caption:
+            payload = update.message.caption.strip()
+
+        if not payload:
+            await update.message.reply_html("Отправьте JSON-объект в том же сообщении: <code>{\"pavilion\": \"A1\"}</code>")
+            return
+
+        obj = json.loads(payload)
+        if not isinstance(obj, dict):
+            await update.message.reply_html("Ожидается JSON-объект (словарь).")
+            return
+
+    except json.JSONDecodeError as e:
+        LOG.warning("Неверный JSON: %s", e)
+        await update.message.reply_html(f"Ошибка разбора JSON: {html.escape(str(e))}")
+        return
+
+    # Save to DB if available, otherwise to CSV via storage
+    saved_id: Optional[int] = None
+    if Database is not None:
+        try:
+            db = Database()
+            db.connect()
+            saved_id = db.add_record(obj)
+            db.close()
+        except Exception:
+            LOG.exception("Ошибка при сохранении в базу; упадём back to CSV")
+
+    if saved_id is None:
+        try:
+            storage.save_row(os.path.dirname(__file__), obj)
+            await update.message.reply_html("Данные сохранены (CSV fallback).")
+            return
+        except Exception:
+            LOG.exception("Не удалось сохранить данные ни в базу, ни в CSV")
+            await update.message.reply_html("Не удалось сохранить данные: внутренняя ошибка.")
+            return
+
+    await update.message.reply_html(f"Данные сохранены с id={saved_id}.")
+
+
+def build_application(token: str) -> Application:
+    LOG.info("Создание Telegram Application (handlers)")
+
+    app = Application.builder().token(token).build()
+
+    app.add_handler(CommandHandler("start", start_command))
+    app.add_handler(CommandHandler("find_net", find_net_command))
+    app.add_handler(CommandHandler("add_data", add_data_command))
+
+    # Preserve legacy network/wifi helpers if present in network module
+    if hasattr(network, "get_wifi_ssid"):
+        async def network_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            text = network.get_wifi_report() if hasattr(network, "get_wifi_report") else network.get_wifi_ssid()
+            await update.message.reply_html(html.escape(str(text)))
+
+        try:
+            app.add_handler(CommandHandler("network", network_cmd))
+        except Exception:
+            LOG.debug("Не удалось добавить network handler")
+
+    # Also add showtable using storage.load_table
+    async def showtable(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        rows = storage.load_table(os.path.dirname(__file__))
+        if not rows:
+            await update.message.reply_html("<i>Таблица пуста.</i>")
+            return
+        lines = ["<b>Таблица записей:</b>"]
+        for i, r in enumerate(rows, 1):
+            name = html.escape(str(r.get("name", "Отсутствует")))
+            addr = html.escape(str(r.get("address", "Отсутствует")))
+            pwd = html.escape(str(r.get("password", "Отсутствует")))
+            note = html.escape(str(r.get("note", "Отсутствует")))
+            lines.append(f"{i}. SSID: <code>{name}</code> | IP: <code>{addr}</code> | Пароль: <code>{pwd}</code> | Прим: <code>{note}</code>")
+        await update.message.reply_html("\n".join(lines))
+
+    app.add_handler(CommandHandler("showtable", showtable))
+
+    LOG.info("Handlers registered")
+    return app
 import os
 import html
 from loguru import logger
