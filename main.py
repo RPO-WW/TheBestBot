@@ -4,9 +4,6 @@ from loguru import logger
 from dotenv import load_dotenv, find_dotenv
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
-from private_chat import anketa
-from group_chat import setup_group_handlers
-from channel import setup_channel_handlers
 
 load_dotenv(find_dotenv())
 TOKEN = os.getenv("TOKEN")
@@ -22,9 +19,6 @@ async def main():
     bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
     dp = Dispatcher()
 
-    anketa(dp)
-    setup_group_handlers(dp)
-    setup_channel_handlers(dp, bot)
 
     logger.info("Бот запущен")
     try:
