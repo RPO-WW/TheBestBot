@@ -20,16 +20,30 @@ class WiFiDB:
                     timestamp INTEGER NOT NULL,
                     channel_bandwidth TEXT NOT NULL,
                     capabilities TEXT NOT NULL,
-                    password TEXT
+                    password TEXT,
+                    dns_server TEXT,
+                    gateway TEXT,
+                    local_ip TEXT
                 )
             """)
 
             cursor.execute("PRAGMA table_info(wifi_networks)")
             columns = [col[1] for col in cursor.fetchall()]
-            if "password" not in columns:
-                cursor.execute("ALTER TABLE wifi_networks ADD COLUMN password TEXT")
+
+            new_columns = ["password", "dns_server", "gateway", "local_ip"]
+            for col in new_columns:
+                if col not in columns:
+                    cursor.execute(f"ALTER TABLE wifi_networks ADD COLUMN {col} TEXT")
 
             conn.commit()
+
+    def is_valid_ip(self, ip: str) -> bool:
+        pattern = r'^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$'
+        match = re.match(pattern, ip)
+        if not match:
+            return False
+        parts = [int(part) for part in match.groups()]
+        return all(0 <= part <= 255 for part in parts)
 
     def checker(self, data: Dict[str, Any]) -> bool:
         try:
@@ -41,9 +55,15 @@ class WiFiDB:
                 if key not in data:
                     raise ValueError(f"Отсутствует обязательное поле: {key}")
 
-            if "password" in data:
-                if not isinstance(data["password"], str):
-                    raise ValueError("password должен быть строкой")
+            if "password" in data and not isinstance(data["password"], str):
+                raise ValueError("password должен быть строкой")
+
+            for field in ["dns_server", "gateway", "local_ip"]:
+                if field in data:
+                    if not isinstance(data[field], str):
+                        raise ValueError(f"{field} должен быть строкой")
+                    if not self.is_valid_ip(data[field]):
+                        raise ValueError(f"{field} содержит неверный формат IP-адреса")
 
             bssid_pattern = r'^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$'
             if not re.match(bssid_pattern, data["bssid"]):
@@ -82,8 +102,8 @@ class WiFiDB:
                 cursor = conn.cursor()
                 cursor.execute("""
                     INSERT INTO wifi_networks 
-                    (bssid, frequency, rssi, ssid, timestamp, channel_bandwidth, capabilities, password)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    (bssid, frequency, rssi, ssid, timestamp, channel_bandwidth, capabilities, password, dns_server, gateway, local_ip)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     data["bssid"],
                     data["frequency"],
@@ -92,7 +112,10 @@ class WiFiDB:
                     data["timestamp"],
                     data["channel_bandwidth"],
                     data["capabilities"],
-                    data.get("password")
+                    data.get("password"),
+                    data.get("dns_server"),
+                    data.get("gateway"),
+                    data.get("local_ip")
                 ))
                 conn.commit()
                 return True
@@ -141,7 +164,10 @@ class WiFiDB:
                         timestamp = ?,
                         channel_bandwidth = ?,
                         capabilities = ?,
-                        password = ?
+                        password = ?,
+                        dns_server = ?,
+                        gateway = ?,
+                        local_ip = ?
                     WHERE bssid = ?
                 """, (
                     data["frequency"],
@@ -151,6 +177,9 @@ class WiFiDB:
                     data["channel_bandwidth"],
                     data["capabilities"],
                     data.get("password"),
+                    data.get("dns_server"),
+                    data.get("gateway"),
+                    data.get("local_ip"),
                     bssid
                 ))
                 conn.commit()
@@ -170,6 +199,7 @@ class WiFiDB:
             print(f"[Ошибка удаления]: {e}")
             return False
 
+    # CRUD-алиасы
     def crud_create(self, data):
         return self.create(data)
 
