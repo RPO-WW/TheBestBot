@@ -105,19 +105,6 @@ class WiFiDB:
                 rows = cursor.fetchall()
                 return [dict(row) for row in rows]
 
-<<<<<<< HEAD
-if __name__ == "__main__":
-	# simple smoke test when run directly
-	logging.basicConfig(level=logging.DEBUG)
-	db = Database()
-	db.connect()
-	a = {"pavilion": "A1", "name": "Booth 1", "items": ["x", "y"]}
-	id1 = db.add_record(a)
-	id2 = db.add_record(a)  # duplicate
-	print("id1", id1, "id2", id2)
-	print(list(db.all_records()))
-	db.close()
-=======
         except Exception as e:
             print(f"[Ошибка чтения]: {e}")
             return []
