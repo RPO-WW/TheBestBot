@@ -19,9 +19,16 @@ class WiFiDB:
                     ssid TEXT NOT NULL,
                     timestamp INTEGER NOT NULL,
                     channel_bandwidth TEXT NOT NULL,
-                    capabilities TEXT NOT NULL
+                    capabilities TEXT NOT NULL,
+                    password TEXT
                 )
             """)
+
+            cursor.execute("PRAGMA table_info(wifi_networks)")
+            columns = [col[1] for col in cursor.fetchall()]
+            if "password" not in columns:
+                cursor.execute("ALTER TABLE wifi_networks ADD COLUMN password TEXT")
+
             conn.commit()
 
     def checker(self, data: Dict[str, Any]) -> bool:
@@ -33,6 +40,10 @@ class WiFiDB:
             for key in required_keys:
                 if key not in data:
                     raise ValueError(f"Отсутствует обязательное поле: {key}")
+
+            if "password" in data:
+                if not isinstance(data["password"], str):
+                    raise ValueError("password должен быть строкой")
 
             bssid_pattern = r'^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$'
             if not re.match(bssid_pattern, data["bssid"]):
@@ -71,8 +82,8 @@ class WiFiDB:
                 cursor = conn.cursor()
                 cursor.execute("""
                     INSERT INTO wifi_networks 
-                    (bssid, frequency, rssi, ssid, timestamp, channel_bandwidth, capabilities)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (bssid, frequency, rssi, ssid, timestamp, channel_bandwidth, capabilities, password)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     data["bssid"],
                     data["frequency"],
@@ -80,7 +91,8 @@ class WiFiDB:
                     data["ssid"],
                     data["timestamp"],
                     data["channel_bandwidth"],
-                    data["capabilities"]
+                    data["capabilities"],
+                    data.get("password")
                 ))
                 conn.commit()
                 return True
@@ -128,7 +140,8 @@ class WiFiDB:
                         ssid = ?,
                         timestamp = ?,
                         channel_bandwidth = ?,
-                        capabilities = ?
+                        capabilities = ?,
+                        password = ?
                     WHERE bssid = ?
                 """, (
                     data["frequency"],
@@ -137,6 +150,7 @@ class WiFiDB:
                     data["timestamp"],
                     data["channel_bandwidth"],
                     data["capabilities"],
+                    data.get("password"),
                     bssid
                 ))
                 conn.commit()
