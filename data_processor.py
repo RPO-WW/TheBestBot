@@ -17,6 +17,25 @@ class DataProcessor:
             ]
         self.unique_fields = unique_fields
 
+    def load_from_json(self, file_path: str) -> List[Dict[str, Any]]:
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            return self.load_from_dict(data)
+        except Exception as e:
+            print(f"Ошибка при загрузке JSON файла: {e}")
+            return []
+
+    def save_to_json(self, data: List[Dict[str, Any]], output_file: str) -> bool:
+        try:
+            with open(output_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            print(f"Данные сохранены в JSON: {output_file}")
+            return True
+        except Exception as e:
+            print(f"Ошибка при сохранении JSON: {e}")
+            return False
+
     def stream_json_objects(self, data: Union[Dict[str, Any], str]) -> Generator[Dict[str, Any], None, None]:
         try:
             if isinstance(data, str):
@@ -26,18 +45,19 @@ class DataProcessor:
             if not isinstance(data, dict):
                 raise ValueError("Данные должны быть словарем")
 
-            def find_arrays(obj: Any) -> Union[List[Any], None]:
-                """Recursively find arrays in nested structures"""
+            def find_object_arrays(obj: Any) -> Union[List[Dict[str, Any]], None]:
                 if isinstance(obj, list):
-                    return obj
+                    if obj and isinstance(obj[0], dict):
+                        return obj
+                    return None
                 elif isinstance(obj, dict):
                     for value in obj.values():
-                        result = find_arrays(value)
+                        result = find_object_arrays(value)
                         if result is not None:
                             return result
                 return None
 
-            array_data = find_arrays(data)
+            array_data = find_object_arrays(data)
             if array_data is None:
                 raise ValueError("В данных не найден массив объектов")
 
@@ -92,41 +112,33 @@ class DataProcessor:
     
         return unique_data
 
-    def load_from_json(self, file_path: str) -> List[Dict[str, Any]]:
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            return self.load_from_dict(data)
-        except Exception as e:
-            print(f"Ошибка при загрузке JSON файла: {e}")
-            return []
-
     def load_from_dict(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
         try:
             common_keys = ['results', 'data', 'items', 'objects', 'entries']
 
             for key in common_keys:
                 if key in data and isinstance(data[key], list):
-                    return data[key]
+                    if data[key] and isinstance(data[key][0], dict):
+                        return data[key]
 
             for value in data.values():
                 if isinstance(value, list):
                     if value and isinstance(value[0], dict):
                         return value
 
-            def find_nested_arrays(obj: Any) -> Union[List[Any], None]:
+            def find_nested_object_arrays(obj: Any) -> Union[List[Dict[str, Any]], None]:
                 if isinstance(obj, list):
                     if obj and isinstance(obj[0], dict):
                         return obj
                     return None
                 elif isinstance(obj, dict):
                     for v in obj.values():
-                        result = find_nested_arrays(v)
+                        result = find_nested_object_arrays(v)
                         if result is not None:
                             return result
                 return None
 
-            nested_array = find_nested_arrays(data)
+            nested_array = find_nested_object_arrays(data)
             if nested_array is not None:
                 return nested_array
 
@@ -135,22 +147,6 @@ class DataProcessor:
         except Exception as e:
             print(f"Ошибка при загрузке данных из словаря: {e}")
             return []
-
-    def save_to_json(self, data: List[Dict[str, Any]], output_file: str) -> bool:
-        try:
-            if not data:
-                print("Нет данных для сохранения")
-                return False
-
-            with open(output_file, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-
-            print(f"Данные сохранены в JSON: {output_file}")
-            return True
-
-        except Exception as e:
-            print(f"Ошибка при сохранении JSON: {e}")
-            return False
 
     def save_to_table(self, data: List[Dict[str, Any]], output_file: str) -> bool:
         try:
