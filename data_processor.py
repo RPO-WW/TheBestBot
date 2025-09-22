@@ -1,22 +1,43 @@
 import json
 from typing import List, Dict, Any, Set, Generator
-from tabulate import tabulate
+import pandas as pd
 
 
 class DataProcessor:
     def __init__(self, unique_fields: List[str] = None):
+        if unique_fields is None:
+            unique_fields = [
+                "bssid",
+                "frequency_mhz",
+                "rssi",
+                "ssid",
+                "timestamp",
+                "channel_bandwidth_mhz",
+                "capabilities"
+            ]
         self.unique_fields = unique_fields
 
-    def stream_json_objects(self, input_file: str) -> Generator[Dict[str, Any], None, None]:
+    def stream_json_objects(self, data: Dict[str, Any]) -> Generator[Dict[str, Any], None, None]:
         try:
-            with open(input_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            if not isinstance(data, list):
-                raise ValueError("JSON должен быть списком объектов")
-            for obj in data:
-                yield obj  
+            if not isinstance(data, dict):
+                raise ValueError("Данные должны быть словарем")
+
+            def find_arrays(obj):
+                if isinstance(obj, list):
+                    return obj
+                elif isinstance(obj, dict):
+                    for value in obj.values():
+                        result = find_arrays(value)
+                        if result is not None:
+                            return result
+                return None
+            array_data = find_arrays(data)
+            if array_data is None:
+                raise ValueError("В данных не найден массив объектов")
+            for obj in array_data:
+                yield obj 
         except Exception as e:
-            print(f"Ошибка при потоковой обработке файла: {e}")
+            print(f"Ошибка при потоковой обработке данных: {e}")
 
     def process_streamed_data(self, input_file: str, output_file: str) -> List[Dict[str, Any]]:
         seen_signatures: Set[str] = set()
@@ -56,25 +77,34 @@ class DataProcessor:
                 unique_data.append(item)
         return unique_data
 
-    def load_from_json(self, input_file: str) -> List[Dict[str, Any]]:
+    def load_from_dict(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
         try:
-            with open(input_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            if not isinstance(data, list):
-                raise ValueError("JSON должен быть списком объектов")
-            return data
+            common_keys = ['results', 'data', 'items', 'objects', 'entries']
+            for key in common_keys:
+                if key in data and isinstance(data[key], list):
+                    return data[key]
+            for value in data.values():
+                if isinstance(value, list):
+                    return value
+            raise ValueError("В словаре не найден массив объектов")
         except Exception as e:
-            print(f"Ошибка при загрузке файла: {e}")
+            print(f"Ошибка при загрузке данных из словаря: {e}")
             return []
 
-    def save_to_json(self, data: List[Dict[str, Any]], output_file: str) -> bool:
+    def save_to_table(self, data: List[Dict[str, Any]], output_file: str) -> bool:
         try:
-            with open(output_file, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            print(f"Данные сохранены в JSON: {output_file}")
+            if not data:
+                print("Нет данных для сохранения")
+                return False
+            df = pd.DataFrame(data)
+            df.to_csv(output_file, index=False, encoding='utf-8')
+            print(f"Данные сохранены в таблицу: {output_file}")
+            print(f"Количество записей: {len(df)}")
+            print(f"Количество столбцов: {len(df.columns)}")
+            print(f"Столбцы: {list(df.columns)}")
             return True
         except Exception as e:
-            print(f"Ошибка при сохранении JSON: {e}")
+            print(f"Ошибка при сохранении таблицы: {e}")
             return False
 
     def process_file(self, input_file: str, output_file: str) -> List[Dict[str, Any]]:
