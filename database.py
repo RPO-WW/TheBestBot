@@ -167,4 +167,3 @@ class WiFiDB:
 
     def crud_delete(self, bssid):
         return self.delete(bssid)
->>>>>>> 0439f7a6780407746711b986ac2568dc07169e66
