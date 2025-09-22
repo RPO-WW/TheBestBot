@@ -6,6 +6,8 @@ from dotenv import load_dotenv, find_dotenv
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 
+from controler import Controller
+
 
 load_dotenv(find_dotenv())
 TOKEN = os.getenv("TOKEN")
@@ -24,6 +26,11 @@ async def main():
     bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 
     logger.info("Бот запущен")
+
+    # TODO
+    # controller = Controller()
+    # controller.logic()
+
     try:
         await dp.start_polling(bot)
     finally:

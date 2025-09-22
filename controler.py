@@ -1,9 +1,3 @@
-from loguru import logger
-from aiogram.types import Message
-from aiogram.fsm.context import FSMContext
-import sqlite3
-
-
 import json
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
@@ -29,6 +23,9 @@ class Controller:
 
     def __init__(self, db: Optional[WiFiDB] = None):
         self.db = db or WiFiDB()
+        # TODO
+        # self.data_processor = ???
+        # self.data = self.parse_json()
 
     def parse_json(self, payload: Any) -> Dict[str, Any]:
         """Parse input JSON (str/bytes/dict) to a dict. Raises ValueError on bad input."""
@@ -71,3 +68,10 @@ class Controller:
         data = self.parse_json(payload)
         network = self.build_network(data)
         return self.save_network(network)
+    
+    def logic(self):
+        # TODO
+        # data_processor = Data_Processor()
+        # new_data = data_processor.delete_dublicates(self.data)
+        # database = Database()
+        # dartabase.write_to_database(new_data)
