@@ -2,7 +2,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from .database import WiFiDB
+from database import WiFiDB
 
 
 @dataclass
