@@ -6,7 +6,11 @@ from dotenv import load_dotenv, find_dotenv
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 
+
+
 from controler import Controller
+from handlers import handlers_router
+
 
 
 load_dotenv(find_dotenv())
@@ -17,20 +21,22 @@ dp.include_router(handlers_router)
 
 
 async def main():
-    logger.add("file.log",
-               format="{time:YYYY-MM-DD at HH:mm:ss} | {level} | {message}",
-               rotation="3 days",
-               backtrace=True,
-               diagnose=True)
+    logger.add(
+        "file.log",
+        format="{time:YYYY-MM-DD at HH:mm:ss} | {level} | {message}",
+        rotation="3 days",
+        backtrace=True,
+        diagnose=True,
+    )
 
     bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 
     logger.info("Бот запущен")
 
-    # TODO
-    # controller = Controller()
-    # controller.logic()
 
+    controller = Controller()
+    controller.logic()
+    
     try:
         await dp.start_polling(bot)
     finally:
@@ -38,5 +44,5 @@ async def main():
         logger.info("Бот остановлен")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(main())

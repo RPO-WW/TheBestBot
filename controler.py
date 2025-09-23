@@ -2,7 +2,8 @@ import json
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from database import WiFiDB
+from Database import WiFiDB
+
 
 
 @dataclass
@@ -18,17 +19,20 @@ class WiFiNetwork:
 
 class Controller:
     """Controller accepts JSON (string or bytes), parses into dict,
-    creates a WiFiNetwork instance and provides methods to save/read via WiFiDB.
+    creates a WiFiNetwork instance and provides
+      methods to save/read via WiFiDB.
     """
 
     def __init__(self, db: Optional[WiFiDB] = None):
         self.db = db or WiFiDB()
-        # TODO
-        # self.data_processor = ???
-        # self.data = self.parse_json()
+
+        self.data_processor = None
+        self.data = None
 
     def parse_json(self, payload: Any) -> Dict[str, Any]:
-        """Parse input JSON (str/bytes/dict) to a dict. Raises ValueError on bad input."""
+        """Parse input JSON (str/bytes/dict) to a dict. Raises
+          ValueError on bad input."""
+
         if isinstance(payload, dict):
             return payload
         try:
@@ -39,7 +43,9 @@ class Controller:
             raise ValueError(f"Invalid JSON payload: {e}")
 
     def build_network(self, data: Dict[str, Any]) -> WiFiNetwork:
-        """Convert dict to WiFiNetwork dataclass. Will raise KeyError/TypeError if fields missing/invalid."""
+        """Convert dict to WiFiNetwork dataclass. Will raise
+          KeyError/TypeError if fields missing/invalid."""
+
         return WiFiNetwork(
             bssid=data['bssid'],
             frequency=int(data['frequency']),
@@ -64,14 +70,14 @@ class Controller:
         return self.db.create(data)
 
     def process_payload_and_save(self, payload: Any) -> bool:
-        """Convenience method: parse payload, build model, and save. Returns True on success."""
-        data = self.parse_json(payload)
-        network = self.build_network(data)
+
+        """Convenience method: parse payload, build model, and save.
+          Returns True on success."""
+        self.data = self.parse_json(payload)
+        network = self.build_network(self.data)
         return self.save_network(network)
-    
+
     def logic(self):
-        # TODO
-        # data_processor = Data_Processor()
-        # new_data = data_processor.delete_dublicates(self.data)
-        # database = Database()
-        # dartabase.write_to_database(new_data)
+        """Placeholder for additional logic, e.g., processing data or interacting with DB."""
+        pass
+
