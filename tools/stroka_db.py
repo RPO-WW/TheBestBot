@@ -17,6 +17,7 @@ class Stroka_Db:
         self.local: str = " "
         self.uroven_signala: int = 0
         self.pavilion: int = 0
+        self.floor: int = 0
 
     def __str__(self):
         return f"Stroka_Db(bssid={self.bssid}, ssid={self.ssid}, rssi={self.rssi})"

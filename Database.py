@@ -25,7 +25,8 @@ class WiFiDB:
                     gateway TEXT,
                     my_ip TEXT,
                     signal_level INTEGER,
-                    pavilion_number INTEGER
+                    pavilion_number INTEGER,
+                    floor INTEGER
                 )
             """)
 
@@ -38,7 +39,8 @@ class WiFiDB:
                 "gateway": "TEXT",
                 "my_ip": "TEXT",
                 "signal_level": "INTEGER",
-                "pavilion_number": "INTEGER"
+                "pavilion_number": "INTEGER",
+                "floor": "INTEGER"
             }
 
             for col_name, col_type in new_columns.items():
@@ -62,13 +64,10 @@ class WiFiDB:
                 if field in data and not isinstance(data[field], str):
                     raise ValueError(f"{field} должен быть строкой")
 
-            if "signal_level" in data:
-                if not isinstance(data["signal_level"], int):
-                    raise ValueError("signal_level должен быть целым числом")
-
-            if "pavilion_number" in data:
-                if not isinstance(data["pavilion_number"], int):
-                    raise ValueError("pavilion_number должен быть целым числом")
+            for field in ["signal_level", "pavilion_number", "floor"]:  # <-- ДОБАВЛЕН floor
+                if field in data:
+                    if not isinstance(data[field], int):
+                        raise ValueError(f"{field} должен быть целым числом")
 
             bssid_pattern = r'^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$'
             if not re.match(bssid_pattern, data["bssid"]):
@@ -107,8 +106,8 @@ class WiFiDB:
                 cursor = conn.cursor()
                 cursor.execute("""
                     INSERT INTO wifi_networks 
-                    (bssid, frequency, rssi, ssid, timestamp, channel_bandwidth, capabilities, password, dns_server, gateway, my_ip, signal_level, pavilion_number)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (bssid, frequency, rssi, ssid, timestamp, channel_bandwidth, capabilities, password, dns_server, gateway, my_ip, signal_level, pavilion_number, floor)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     data["bssid"],
                     data["frequency"],
@@ -122,7 +121,8 @@ class WiFiDB:
                     data.get("gateway"),
                     data.get("my_ip"),
                     data.get("signal_level"),
-                    data.get("pavilion_number")
+                    data.get("pavilion_number"),
+                    data.get("floor")
                 ))
                 conn.commit()
                 return True
@@ -176,7 +176,8 @@ class WiFiDB:
                         gateway = ?,
                         my_ip = ?,
                         signal_level = ?,
-                        pavilion_number = ?
+                        pavilion_number = ?,
+                        floor = ?
                     WHERE bssid = ?
                 """, (
                     data["frequency"],
@@ -191,6 +192,7 @@ class WiFiDB:
                     data.get("my_ip"),
                     data.get("signal_level"),
                     data.get("pavilion_number"),
+                    data.get("floor"),
                     bssid
                 ))
                 conn.commit()
