@@ -1,61 +1,77 @@
-from loguru import logger
-from aiogram.types import Message
-from aiogram.fsm.context import FSMContext
-import sqlite3
+import json
+from dataclasses import dataclass
+from typing import Any, Dict, Optional
+
+from Database import WiFiDB
 
 
-class BotController:
-    def init(self, conn: sqlite3.Connection):
-        self.conn = conn
+@dataclass
+class WiFiNetwork:
+    bssid: str
+    frequency: int
+    rssi: int
+    ssid: str
+    timestamp: int
+    channel_bandwidth: str
+    capabilities: str
 
-    async def start(self, msg: Message, state: FSMContext):
+
+class Controller:
+    """Controller accepts JSON (string or bytes), parses into dict,
+    creates a WiFiNetwork instance and provides
+      methods to save/read via WiFiDB.
+    """
+
+    def __init__(self, db: Optional[WiFiDB] = None):
+        self.db = db or WiFiDB()
+        self.data_processor = None
+        self.data = None
+
+    def parse_json(self, payload: Any) -> Dict[str, Any]:
+        """Parse input JSON (str/bytes/dict) to a dict. Raises
+          ValueError on bad input."""
+        if isinstance(payload, dict):
+            return payload
         try:
-            text = "Привет! Отправляй текст, я сохраню и отсортирую.\n" \
-                   "Используй /sort_time для сортировки."
-            await msg.answer(text, parse_mode="HTML")
+            if isinstance(payload, bytes):
+                payload = payload.decode('utf-8')
+            return json.loads(payload)
         except Exception as e:
-            logger.error(f"Ошибка команды /start: {e}")
-            await msg.answer("Ошибка. Попробуйте снова.")
+            raise ValueError(f"Invalid JSON payload: {e}")
 
-    async def handle_message(self, msg: Message, state: FSMContext):
-        try:
-            if not msg.text.strip():
-                await msg.answer("Отправьте непустое сообщение.")
-                return
-            data = {'user_id': msg.from_user.id, 'message': msg.text,
-                    'timestamp': msg.date.isoformat()}
-            c = self.conn.cursor()
-            c.execute("INSERT INTO messages VALUES (?, ?, ?)",
-                      (data['user_id'], data['message'], data['timestamp']))
-            self.conn.commit()
-            c.execute("SELECT user_id, message, timestamp FROM messages "
-                      "ORDER BY LOWER(message)")
-            sorted_data = [{'user_id': row[0], 'message': row[1],
-                            'timestamp': row[2]} for row in c.fetchall()]
-            response = "Данные (по тексту):\n"
-            for item in sorted_data:
-                response += f"User {item['user_id']}: {item['message']} " \
-                           f"(время: {item['timestamp']})\n"
-            await msg.answer(response, parse_mode="HTML")
-        except Exception as e:
-            logger.error(f"Ошибка обработки сообщения: {e}")
-            await msg.answer("Ошибка обработки. Попробуйте снова.")
+    def build_network(self, data: Dict[str, Any]) -> WiFiNetwork:
+        """Convert dict to WiFiNetwork dataclass. Will raise
+          KeyError/TypeError if fields missing/invalid."""
+        return WiFiNetwork(
+            bssid=data['bssid'],
+            frequency=int(data['frequency']),
+            rssi=int(data['rssi']),
+            ssid=str(data['ssid']),
+            timestamp=int(data['timestamp']),
+            channel_bandwidth=str(data['channel_bandwidth']),
+            capabilities=str(data['capabilities']),
+        )
 
-    async def sort_by_time(self, msg: Message, state: FSMContext):
-        try:
-            c = self.conn.cursor()
-            c.execute("SELECT user_id, message, timestamp FROM messages")
-            sorted_data = [{'user_id': row[0], 'message': row[1],
-                            'timestamp': row[2]} for row in c.fetchall()]
-            if not sorted_data:
-                await msg.answer("Нет данных!")
-                return
-            sorted_data = sorted(sorted_data, key=lambda x: x['timestamp'])
-            response = "Данные (по времени):\n"
-            for item in sorted_data:
-                response += f"User {item['user_id']}: {item['message']} " \
-                           f"(время: {item['timestamp']})\n"
-            await msg.answer(response, parse_mode="HTML")
-        except Exception as e:
-            logger.error(f"Ошибка команды /sort_time: {e}")
-            await msg.answer("Ошибка сортировки. Попробуйте снова.")
+    def save_network(self, network: WiFiNetwork) -> bool:
+        """Save WiFiNetwork to DB via WiFiDB.create()"""
+        data = {
+            'bssid': network.bssid,
+            'frequency': network.frequency,
+            'rssi': network.rssi,
+            'ssid': network.ssid,
+            'timestamp': network.timestamp,
+            'channel_bandwidth': network.channel_bandwidth,
+            'capabilities': network.capabilities,
+        }
+        return self.db.create(data)
+
+    def process_payload_and_save(self, payload: Any) -> bool:
+        """Convenience method: parse payload, build model, and save.
+          Returns True on success."""
+        self.data = self.parse_json(payload)
+        network = self.build_network(self.data)
+        return self.save_network(network)
+
+    def logic(self):
+        """Placeholder for additional logic, e.g., processing data or interacting with DB."""
+        pass
