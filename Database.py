@@ -1,6 +1,9 @@
+# database.py
+
 import sqlite3
 import re
 from typing import Dict, List, Optional, Any
+from tools.stroka_db import Stroka_Db
 
 
 class WiFiDB:
@@ -49,6 +52,24 @@ class WiFiDB:
 
             conn.commit()
 
+    def _stroka_to_dict(self, stroka: Stroka_Db) -> Dict[str, Any]:
+        return {
+            "bssid": stroka.bssid,
+            "frequency": stroka.freq,
+            "rssi": stroka.rssi,
+            "ssid": stroka.ssid,
+            "timestamp": stroka.timestamp,
+            "channel_bandwidth": stroka.volna,
+            "capabilities": stroka.tochka_dostupa,
+            "password": stroka.password if stroka.password != " " else None,
+            "dns_server": stroka.dns_server if stroka.dns_server != " " else None,
+            "gateway": stroka.shluz if stroka.shluz != " " else None,
+            "my_ip": stroka.local if stroka.local != " " else None,
+            "signal_level": stroka.uroven_signala if stroka.uroven_signala != 0 else None,
+            "pavilion_number": stroka.pavilion if stroka.pavilion != 0 else None,
+            "floor": stroka.floor if stroka.floor != 0 else None,
+        }
+
     def checker(self, data: Dict[str, Any]) -> bool:
         try:
             required_keys = [
@@ -64,7 +85,7 @@ class WiFiDB:
                 if field in data and not isinstance(data[field], str):
                     raise ValueError(f"{field} должен быть строкой")
 
-            for field in ["signal_level", "pavilion_number", "floor"]:  # <-- ДОБАВЛЕН floor
+            for field in ["signal_level", "pavilion_number", "floor"]:
                 if field in data:
                     if not isinstance(data[field], int):
                         raise ValueError(f"{field} должен быть целым числом")
@@ -132,6 +153,10 @@ class WiFiDB:
         except Exception as e:
             print(f"[Ошибка создания]: {e}")
             return False
+
+    def create_from_stroka(self, stroka: Stroka_Db) -> bool:
+        data = self._stroka_to_dict(stroka)
+        return self.create(data)
 
     def read(self, bssid: Optional[str] = None) -> List[Dict[str, Any]]:
         try:
@@ -201,6 +226,13 @@ class WiFiDB:
             print(f"[Ошибка обновления]: {e}")
             return False
 
+    def update_from_stroka(self, bssid: str, stroka: Stroka_Db) -> bool:
+        data = self._stroka_to_dict(stroka)
+        if data["bssid"] != bssid:
+            print("[Ошибка] BSSID в объекте не совпадает с целевым BSSID для обновления.")
+            return False
+        return self.update(bssid, data)
+
     def delete(self, bssid: str) -> bool:
         try:
             with sqlite3.connect(self.db_path) as conn:
@@ -213,12 +245,16 @@ class WiFiDB:
             return False
 
     def crud_create(self, data):
+        if isinstance(data, Stroka_Db):
+            return self.create_from_stroka(data)
         return self.create(data)
 
     def crud_read(self, bssid=None):
         return self.read(bssid)
 
     def crud_update(self, bssid, data):
+        if isinstance(data, Stroka_Db):
+            return self.update_from_stroka(bssid, data)
         return self.update(bssid, data)
 
     def crud_delete(self, bssid):
