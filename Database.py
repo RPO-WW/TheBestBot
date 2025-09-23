@@ -1,6 +1,9 @@
+# database.py
+
 import sqlite3
 import re
 from typing import Dict, List, Optional, Any
+from tools.stroka_db import Stroka_Db
 
 
 class WiFiDB:
@@ -19,10 +22,53 @@ class WiFiDB:
                     ssid TEXT NOT NULL,
                     timestamp INTEGER NOT NULL,
                     channel_bandwidth TEXT NOT NULL,
-                    capabilities TEXT NOT NULL
+                    capabilities TEXT NOT NULL,
+                    password TEXT,
+                    dns_server TEXT,
+                    gateway TEXT,
+                    my_ip TEXT,
+                    signal_level INTEGER,
+                    pavilion_number INTEGER,
+                    floor INTEGER
                 )
             """)
+
+            cursor.execute("PRAGMA table_info(wifi_networks)")
+            columns = [col[1] for col in cursor.fetchall()]
+
+            new_columns = {
+                "password": "TEXT",
+                "dns_server": "TEXT",
+                "gateway": "TEXT",
+                "my_ip": "TEXT",
+                "signal_level": "INTEGER",
+                "pavilion_number": "INTEGER",
+                "floor": "INTEGER"
+            }
+
+            for col_name, col_type in new_columns.items():
+                if col_name not in columns:
+                    cursor.execute(f"ALTER TABLE wifi_networks ADD COLUMN {col_name} {col_type}")
+
             conn.commit()
+
+    def _stroka_to_dict(self, stroka: Stroka_Db) -> Dict[str, Any]:
+        return {
+            "bssid": stroka.bssid,
+            "frequency": stroka.freq,
+            "rssi": stroka.rssi,
+            "ssid": stroka.ssid,
+            "timestamp": stroka.timestamp,
+            "channel_bandwidth": stroka.volna,
+            "capabilities": stroka.tochka_dostupa,
+            "password": stroka.password if stroka.password != " " else None,
+            "dns_server": stroka.dns_server if stroka.dns_server != " " else None,
+            "gateway": stroka.shluz if stroka.shluz != " " else None,
+            "my_ip": stroka.local if stroka.local != " " else None,
+            "signal_level": stroka.uroven_signala if stroka.uroven_signala != 0 else None,
+            "pavilion_number": stroka.pavilion if stroka.pavilion != 0 else None,
+            "floor": stroka.floor if stroka.floor != 0 else None,
+        }
 
     def checker(self, data: Dict[str, Any]) -> bool:
         try:
@@ -33,6 +79,16 @@ class WiFiDB:
             for key in required_keys:
                 if key not in data:
                     raise ValueError(f"Отсутствует обязательное поле: {key}")
+
+            optional_string_fields = ["password", "dns_server", "gateway", "my_ip"]
+            for field in optional_string_fields:
+                if field in data and not isinstance(data[field], str):
+                    raise ValueError(f"{field} должен быть строкой")
+
+            for field in ["signal_level", "pavilion_number", "floor"]:
+                if field in data:
+                    if not isinstance(data[field], int):
+                        raise ValueError(f"{field} должен быть целым числом")
 
             bssid_pattern = r'^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$'
             if not re.match(bssid_pattern, data["bssid"]):
@@ -71,8 +127,8 @@ class WiFiDB:
                 cursor = conn.cursor()
                 cursor.execute("""
                     INSERT INTO wifi_networks 
-                    (bssid, frequency, rssi, ssid, timestamp, channel_bandwidth, capabilities)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (bssid, frequency, rssi, ssid, timestamp, channel_bandwidth, capabilities, password, dns_server, gateway, my_ip, signal_level, pavilion_number, floor)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     data["bssid"],
                     data["frequency"],
@@ -80,7 +136,14 @@ class WiFiDB:
                     data["ssid"],
                     data["timestamp"],
                     data["channel_bandwidth"],
-                    data["capabilities"]
+                    data["capabilities"],
+                    data.get("password"),
+                    data.get("dns_server"),
+                    data.get("gateway"),
+                    data.get("my_ip"),
+                    data.get("signal_level"),
+                    data.get("pavilion_number"),
+                    data.get("floor")
                 ))
                 conn.commit()
                 return True
@@ -90,6 +153,10 @@ class WiFiDB:
         except Exception as e:
             print(f"[Ошибка создания]: {e}")
             return False
+
+    def create_from_stroka(self, stroka: Stroka_Db) -> bool:
+        data = self._stroka_to_dict(stroka)
+        return self.create(data)
 
     def read(self, bssid: Optional[str] = None) -> List[Dict[str, Any]]:
         try:
@@ -128,7 +195,14 @@ class WiFiDB:
                         ssid = ?,
                         timestamp = ?,
                         channel_bandwidth = ?,
-                        capabilities = ?
+                        capabilities = ?,
+                        password = ?,
+                        dns_server = ?,
+                        gateway = ?,
+                        my_ip = ?,
+                        signal_level = ?,
+                        pavilion_number = ?,
+                        floor = ?
                     WHERE bssid = ?
                 """, (
                     data["frequency"],
@@ -137,6 +211,13 @@ class WiFiDB:
                     data["timestamp"],
                     data["channel_bandwidth"],
                     data["capabilities"],
+                    data.get("password"),
+                    data.get("dns_server"),
+                    data.get("gateway"),
+                    data.get("my_ip"),
+                    data.get("signal_level"),
+                    data.get("pavilion_number"),
+                    data.get("floor"),
                     bssid
                 ))
                 conn.commit()
@@ -144,6 +225,13 @@ class WiFiDB:
         except Exception as e:
             print(f"[Ошибка обновления]: {e}")
             return False
+
+    def update_from_stroka(self, bssid: str, stroka: Stroka_Db) -> bool:
+        data = self._stroka_to_dict(stroka)
+        if data["bssid"] != bssid:
+            print("[Ошибка] BSSID в объекте не совпадает с целевым BSSID для обновления.")
+            return False
+        return self.update(bssid, data)
 
     def delete(self, bssid: str) -> bool:
         try:
@@ -157,12 +245,16 @@ class WiFiDB:
             return False
 
     def crud_create(self, data):
+        if isinstance(data, Stroka_Db):
+            return self.create_from_stroka(data)
         return self.create(data)
 
     def crud_read(self, bssid=None):
         return self.read(bssid)
 
     def crud_update(self, bssid, data):
+        if isinstance(data, Stroka_Db):
+            return self.update_from_stroka(bssid, data)
         return self.update(bssid, data)
 
     def crud_delete(self, bssid):

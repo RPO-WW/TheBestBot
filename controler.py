@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 from Database import WiFiDB
 
 
+
 @dataclass
 class WiFiNetwork:
     bssid: str
@@ -24,12 +25,14 @@ class Controller:
 
     def __init__(self, db: Optional[WiFiDB] = None):
         self.db = db or WiFiDB()
+
         self.data_processor = None
         self.data = None
 
     def parse_json(self, payload: Any) -> Dict[str, Any]:
         """Parse input JSON (str/bytes/dict) to a dict. Raises
           ValueError on bad input."""
+
         if isinstance(payload, dict):
             return payload
         try:
@@ -42,6 +45,7 @@ class Controller:
     def build_network(self, data: Dict[str, Any]) -> WiFiNetwork:
         """Convert dict to WiFiNetwork dataclass. Will raise
           KeyError/TypeError if fields missing/invalid."""
+
         return WiFiNetwork(
             bssid=data['bssid'],
             frequency=int(data['frequency']),
@@ -66,6 +70,7 @@ class Controller:
         return self.db.create(data)
 
     def process_payload_and_save(self, payload: Any) -> bool:
+
         """Convenience method: parse payload, build model, and save.
           Returns True on success."""
         self.data = self.parse_json(payload)
@@ -75,3 +80,4 @@ class Controller:
     def logic(self):
         """Placeholder for additional logic, e.g., processing data or interacting with DB."""
         pass
+
