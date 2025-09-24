@@ -104,7 +104,7 @@ def _validate_wifi_data(data: Dict[str, Any]) -> tuple[bool, str]:
 def _prepare_wifi_data(data: Dict[str, Any]) -> Dict[str, Any]:
     """Подготавливает данные WiFi-сети, обрабатывая пустые значения."""
     prepared_data = data.copy()
-    
+
     # Обработка пустых или None значений
     for key in prepared_data:
         if prepared_data[key] is None:
@@ -118,7 +118,7 @@ def _prepare_wifi_data(data: Dict[str, Any]) -> Dict[str, Any]:
             if key in ['bssid']:
                 # BSSID не может быть пустой строкой, это обязательное поле
                 prepared_data[key] = "00:00:00:00:00:00"
-    
+
     # Гарантируем наличие всех обязательных полей
     required_fields = ['bssid', 'frequency', 'rssi', 'ssid', 'timestamp', 'channel_bandwidth', 'capabilities']
     for field in required_fields:
@@ -127,7 +127,7 @@ def _prepare_wifi_data(data: Dict[str, Any]) -> Dict[str, Any]:
                 prepared_data[field] = 0
             else:
                 prepared_data[field] = ""
-    
+
     return prepared_data
 
 
@@ -138,7 +138,7 @@ async def _process_single_wifi_record(data: Dict[str, Any], message: types.Messa
     """
     # Подготавливаем данные (обрабатываем пустые значения)
     prepared_data = _prepare_wifi_data(data)
-    
+
     # Проверяем валидность данных
     is_valid, error_msg = _validate_wifi_data(prepared_data)
     if not is_valid:
@@ -370,7 +370,6 @@ async def show_instructions(callback: types.CallbackQuery) -> None:
         - *Канал*: Ширина канала.
         - *Время*: Время обнаружения (Unix timestamp).
         - *Капабилити*: Поддерживаемые протоколы.
-
         Если возникли ошибки, проверьте формат JSON или свяжитесь с разработчиком.
         """
     )
