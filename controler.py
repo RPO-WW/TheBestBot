@@ -2,25 +2,17 @@ import json
 from loguru import logger
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
-from io import BytesIO
-from dotenv import load_dotenv
-import os
 
 from Database import WiFiDB
-
-from aiogram import Bot, Dispatcher, Router, F
-from aiogram.filters import Command
-from aiogram.types import Message
-from aiogram.client.default import DefaultBotProperties
-
-load_dotenv()
-BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 logger.add("file.log",
            format="{time:YYYY-MM-DD at HH:mm:ss} | {level} | {message}",
            rotation="3 days",
            backtrace=True,
            diagnose=True)
+
+logger.info("Контроллер инициализирован")
+
 
 @dataclass
 class WiFiNetwork:
@@ -42,6 +34,7 @@ class Controller:
         self.db = db or WiFiDB()
         self.data_processor = None
         self.data = None
+        logger.info("Контроллер Controller создан")
 
     def parse_json(self, payload: Any) -> Dict[str, Any]:
         """Парсит JSON (str/bytes/dict) в dict. Вызывает ValueError
@@ -54,12 +47,14 @@ class Controller:
                 payload = payload.decode('utf-8')
             return json.loads(payload)
         except Exception as e:
+            logger.error(f"Ошибка парсинга JSON: {e}")
             raise ValueError(f"Некорректный JSON: {e}")
 
     def build_network(self, data: Dict[str, Any]) -> WiFiNetwork:
         """Конвертирует dict в WiFiNetwork. Вызывает KeyError/TypeError,
         если поля отсутствуют/некорректны."""
 
+        logger.debug(f"Строим WiFiNetwork из данных: {data}")
         return WiFiNetwork(
             bssid=data['bssid'],
             frequency=int(data['frequency']),
@@ -81,11 +76,18 @@ class Controller:
             'channel_bandwidth': network.channel_bandwidth,
             'capabilities': network.capabilities,
         }
-        return self.db.create(data)
+        logger.info(f"Сохраняем сеть: {network.ssid} ({network.bssid})")
+        result = self.db.create(data)
+        if result:
+            logger.info("Сеть успешно сохранена в БД")
+        else:
+            logger.error("Ошибка сохранения сети в БД")
+        return result
 
     def process_payload_and_save(self, payload: Any) -> bool:
         """Удобный метод: парсит payload, строит модель и сохраняет.
         Возвращает True при успехе."""
+        logger.info("Начинаем обработку payload")
         self.data = self.parse_json(payload)
         network = self.build_network(self.data)
         return self.save_network(network)
@@ -93,4 +95,8 @@ class Controller:
     def logic(self):
         """Плейсхолдер для дополнительной логики, например,
         обработки данных или взаимодействия с БД."""
+        logger.debug("Дополнительная логика вызвана")
+        # Здесь можно добавить реальную логику, например:
+        # self.data_processor = process_data(self.data)
+        # logger.info(f"Обработанные данные: {self.data_processor}")
         pass
