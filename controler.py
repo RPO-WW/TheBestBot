@@ -60,12 +60,26 @@ class Controller:
             logger.error(f"Ошибка валидации frequency: {e}")
             raise ValueError(f"Некорректное значение frequency: {e}")
 
+        try:
+            rssi = int(data['rssi'])
+        except (ValueError, KeyError) as e:
+            logger.error(f"Ошибка валидации rssi: {e}")
+            raise ValueError(f"Некорректное значение rssi: {e}")
+
+        try:
+            timestamp = int(data['timestamp'])
+            if timestamp <= 0:
+                raise ValueError("Timestamp должен быть положительным числом")
+        except (ValueError, KeyError) as e:
+            logger.error(f"Ошибка валидации timestamp: {e}")
+            raise ValueError(f"Некорректное значение timestamp: {e}")
+
         return WiFiNetwork(
             bssid=data['bssid'],
             frequency=frequency,
-            rssi=int(data['rssi']),
+            rssi=rssi,
             ssid=str(data['ssid']),
-            timestamp=int(data['timestamp']),
+            timestamp=timestamp,
             channel_bandwidth=str(data['channel_bandwidth']),
             capabilities=str(data['capabilities']),
         )
