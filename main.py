@@ -28,12 +28,13 @@ async def main():
 
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
     dp = Dispatcher()
-    dp.include_router(handlers_router)
+    dp.include_router(bot_router)
 
     logger.info("Бот запущен")
 
     controller = Controller()
     controller.logic()
+
 
     try:
         await dp.start_polling(bot)
