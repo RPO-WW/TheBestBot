@@ -20,7 +20,8 @@ class Stroka_Db:
         self.floor: int = 0
 
     def __str__(self):
-        return f"Stroka_Db(bssid={self.bssid}, ssid={self.ssid}, rssi={self.rssi})"
+        return f"Stroka_Db(bssid={self.bssid}, ssid={self.ssid}, rssi={
+            self.rssi}"
 
     def __repr__(self):
         return self.__str__()
