@@ -40,11 +40,10 @@ def get_main_keyboard() -> InlineKeyboardMarkup:
 
 
 def _format_records_table(records: List[Dict[str, Any]]) -> str:
-    """Форматирует список записей в текстовую таблицу.
+    """Форматирует список записей в текстовую таблицу."""
+    if not records:
+        return "📊 Таблица WiFi-сетей:\n\nТаблица пуста."
 
-    Ожидаемый формат записи - словарь с ключами: ssid, bssid, frequency, rssi,
-    channel_bandwidth, timestamp, capabilities.
-    """
     header = (
         "📊 Таблица WiFi-сетей:\n\n"
         f"{'SSID':<20} {'BSSID':<18} {'Частота':<10} {'RSSI':<8} {'Канал':<10} {'Время':<15} {'Капабилити':<20}\n"
@@ -68,35 +67,28 @@ def _format_records_table(records: List[Dict[str, Any]]) -> str:
 
 
 def _validate_wifi_data(data: Dict[str, Any]) -> tuple[bool, str]:
-    """Проверяет валидность данных WiFi-сети.
-
-    Возвращает (is_valid, error_message)
-    """
+    """Проверяет валидность данных WiFi-сети."""
     required_fields = ['bssid', 'frequency', 'rssi', 'ssid', 'timestamp']
 
     for field in required_fields:
         if field not in data:
             return False, f"Отсутствует обязательное поле: {field}"
 
-    # Проверка типов данных с учетом возможных None значений
-    if data.get('bssid') is not None:
-        if not isinstance(data['bssid'], str) or len(data['bssid']) == 0:
-            return False, "BSSID должен быть непустой строкой"
+    # Проверка типов данных
+    if not isinstance(data['bssid'], str) or len(data['bssid']) == 0:
+        return False, "BSSID должен быть непустой строкой"
 
-    if data.get('ssid') is not None and not isinstance(data['ssid'], str):
+    if not isinstance(data['ssid'], str):
         return False, "SSID должен быть строкой"
 
-    if data.get('frequency') is not None:
-        if not isinstance(data['frequency'], (int, float)) or data['frequency'] <= 0:
-            return False, "Frequency должен быть положительным числом"
+    if not isinstance(data['frequency'], (int, float)) or data['frequency'] <= 0:
+        return False, "Frequency должен быть положительным числом"
 
-    if data.get('rssi') is not None:
-        if not isinstance(data['rssi'], int) or data['rssi'] > 0:
-            return False, "RSSI должен быть целым отрицательным числом"
+    if not isinstance(data['rssi'], int) or data['rssi'] > 0:
+        return False, "RSSI должен быть целым отрицательным числом"
 
-    if data.get('timestamp') is not None:
-        if not isinstance(data['timestamp'], (int, float)) or data['timestamp'] <= 0:
-            return False, "Timestamp должен быть положительным числом"
+    if not isinstance(data['timestamp'], (int, float)) or data['timestamp'] <= 0:
+        return False, "Timestamp должен быть положительным числом"
 
     return True, ""
 
@@ -104,21 +96,18 @@ def _validate_wifi_data(data: Dict[str, Any]) -> tuple[bool, str]:
 def _prepare_wifi_data(data: Dict[str, Any]) -> Dict[str, Any]:
     """Подготавливает данные WiFi-сети, обрабатывая пустые значения."""
     prepared_data = data.copy()
-
+    
     # Обработка пустых или None значений
     for key in prepared_data:
         if prepared_data[key] is None:
-            # Для числовых полей можно установить значения по умолчанию
             if key in ['frequency', 'rssi', 'timestamp']:
                 prepared_data[key] = 0
             elif key in ['ssid', 'bssid', 'channel_bandwidth', 'capabilities']:
                 prepared_data[key] = ""
         elif prepared_data[key] == "":
-            # Пустые строки оставляем как есть или устанавливаем значения по умолчанию
             if key in ['bssid']:
-                # BSSID не может быть пустой строкой, это обязательное поле
                 prepared_data[key] = "00:00:00:00:00:00"
-
+    
     # Гарантируем наличие всех обязательных полей
     required_fields = ['bssid', 'frequency', 'rssi', 'ssid', 'timestamp', 'channel_bandwidth', 'capabilities']
     for field in required_fields:
@@ -127,18 +116,15 @@ def _prepare_wifi_data(data: Dict[str, Any]) -> Dict[str, Any]:
                 prepared_data[field] = 0
             else:
                 prepared_data[field] = ""
-
+    
     return prepared_data
 
 
 async def _process_single_wifi_record(data: Dict[str, Any], message: types.Message) -> bool:
-    """Обрабатывает одну запись WiFi-данных.
-
-    Возвращает True если данные сохранены, False если произошла ошибка.
-    """
-    # Подготавливаем данные (обрабатываем пустые значения)
+    """Обрабатывает одну запись WiFi-данных."""
+    # Подготавливаем данные
     prepared_data = _prepare_wifi_data(data)
-
+    
     # Проверяем валидность данных
     is_valid, error_msg = _validate_wifi_data(prepared_data)
     if not is_valid:
@@ -162,6 +148,43 @@ async def _process_single_wifi_record(data: Dict[str, Any], message: types.Messa
         return False
 
 
+async def _process_multiple_wifi_records(records: List[Dict[str, Any]], message: types.Message) -> None:
+    """Обрабатывает множественные записи WiFi-данных."""
+    if not records:
+        await message.answer("❌ Нет записей для обработки.", reply_markup=get_main_keyboard())
+        return
+
+    total_count = len(records)
+    success_count = 0
+    error_count = 0
+
+    await message.answer(f"🔄 Начинаю обработку {total_count} записей...")
+
+    for i, record in enumerate(records, 1):
+        if not isinstance(record, dict):
+            error_count += 1
+            logger.warning(f"Запись #{i} имеет неверный формат: {type(record)}")
+            continue
+
+        try:
+            if await _process_single_wifi_record(record, message):
+                success_count += 1
+            else:
+                error_count += 1
+        except Exception:
+            error_count += 1
+            logger.exception(f"Ошибка при обработке записи #{i}")
+
+    # Формируем итоговое сообщение
+    result_message = (
+        f"✅ Обработка завершена!\n\n"
+        f"• Успешно: {success_count}/{total_count}\n"
+        f"• Ошибки: {error_count}/{total_count}"
+    )
+
+    await message.answer(result_message, reply_markup=get_main_keyboard())
+
+
 async def _process_json_file_content(content: str, message: types.Message) -> None:
     """Обрабатывает содержимое JSON-файла."""
     try:
@@ -172,42 +195,10 @@ async def _process_json_file_content(content: str, message: types.Message) -> No
 
     # Определяем тип данных: одиночная запись или массив записей
     if isinstance(parsed_data, list):
-        # Множественные записи - отправляем в data_processor
-        try:
-            if hasattr(controller, 'data_processor') and controller.data_processor:
-                # Обрабатываем каждую запись перед отправкой в data_processor
-                processed_records = []
-                for record in parsed_data:
-                    if isinstance(record, dict):
-                        processed_records.append(_prepare_wifi_data(record))
-                    else:
-                        processed_records.append(record)
-                
-                controller.data_processor.process_multiple_records(processed_records)
-                await message.answer(
-                    f"✅ Получен файл с {len(parsed_data)} записями. Данные отправлены на обработку в data_processor.",
-                    reply_markup=get_main_keyboard()
-                )
-            else:
-                # Если data_processor недоступен, обрабатываем последовательно
-                success_count = 0
-                for i, record in enumerate(parsed_data):
-                    if isinstance(record, dict):
-                        if await _process_single_wifi_record(record, message):
-                            success_count += 1
-                    else:
-                        logger.warning(f"Запись #{i} имеет неверный формат: {type(record)}")
-
-                await message.answer(
-                    f"✅ Обработано {success_count}/{len(parsed_data)} записей из файла.",
-                    reply_markup=get_main_keyboard()
-                )
-        except Exception as e:
-            logger.exception("Error processing multiple records")
-            await message.answer(f"❌ Ошибка при обработке множественных записей: {e}", reply_markup=get_main_keyboard())
-
+        # Множественные записи
+        await _process_multiple_wifi_records(parsed_data, message)
     elif isinstance(parsed_data, dict):
-        # Одиночная запись - пробуем сохранить сразу
+        # Одиночная запись
         success = await _process_single_wifi_record(parsed_data, message)
         if success:
             await message.answer("✅ Данные из файла успешно сохранены в таблицу!", reply_markup=get_main_keyboard())
@@ -221,7 +212,10 @@ async def cmd_start(message: types.Message):
     welcome_text = (
         "Добро пожаловать в WiFi Data Bot! 🌐\n"
         "Я помогаю собирать и хранить данные о WiFi-сетях.\n"
-        "Вы можете присылать данные как текстом в JSON формате, так и JSON-файлами.\n"
+        "Вы можете присылать данные как текстом в JSON формате, так и JSON-файлами.\n\n"
+        "📋 Поддерживаемые форматы:\n"
+        "• Одиночная запись: JSON-объект\n"
+        "• Множественные записи: JSON-массив объектов\n\n"
         "Используйте кнопки ниже для работы с ботом:"
     )
     await message.answer(welcome_text, reply_markup=get_main_keyboard())
@@ -233,7 +227,6 @@ async def show_table(callback: types.CallbackQuery) -> None:
     """Отправляет пользователю текстовую таблицу со всеми записями."""
     try:
         records = controller.db.read_all()
-
     except Exception as exc:
         logger.exception("Failed to read records from DB")
         await callback.message.answer(f"Ошибка при получении таблицы: {exc}")
@@ -246,7 +239,15 @@ async def show_table(callback: types.CallbackQuery) -> None:
         return
 
     table_text = _format_records_table(records)
-    await callback.message.answer(table_text, reply_markup=get_main_keyboard())
+    
+    # Разбиваем длинные сообщения на части
+    if len(table_text) > 4000:
+        parts = [table_text[i:i+4000] for i in range(0, len(table_text), 4000)]
+        for part in parts:
+            await callback.message.answer(f"```\n{part}\n```", parse_mode="Markdown")
+    else:
+        await callback.message.answer(f"```\n{table_text}\n```", parse_mode="Markdown", reply_markup=get_main_keyboard())
+    
     await callback.answer()
 
 
@@ -254,22 +255,54 @@ async def show_table(callback: types.CallbackQuery) -> None:
 @bot_router.callback_query(F.data == "new_entry")
 async def start_new_entry(callback: types.CallbackQuery) -> None:
     """Просит пользователя прислать JSON с данными о WiFi-сети."""
-    example = (
-        '{"bssid": "00:11:22:33:44:55", "frequency": 2412, "rssi": -50, '
-        '"ssid": "MyWiFi", "timestamp": 1698115200, "channel_bandwidth": "20MHz", '
-        '"capabilities": "WPA2-PSK"}'
-    )
-    await callback.message.answer(
-        "📝 Введите данные WiFi-сети в формате JSON или отправьте JSON-файл, например:\n" + example
+    example_single = textwrap.dedent('''
+        📋 *Одиночная запись:*
+        ```json
+        {
+            "bssid": "00:11:22:33:44:55",
+            "frequency": 2412,
+            "rssi": -50,
+            "ssid": "MyWiFi",
+            "timestamp": 1698115200,
+            "channel_bandwidth": "20MHz",
+            "capabilities": "WPA2-PSK"
+        }
+        ```
+    ''')
+    
+    example_multiple = textwrap.dedent('''
+        📋 *Множественные записи (массив):*
+        ```json
+        [
+            {
+                "bssid": "00:11:22:33:44:55",
+                "frequency": 2412,
+                "rssi": -50,
+                "ssid": "MyWiFi",
+                "timestamp": 1698115200
+            },
+            {
+                "bssid": "AA:BB:CC:DD:EE:FF",
+                "frequency": 5180,
+                "rssi": -65,
+                "ssid": "OfficeNet",
+                "timestamp": 1698115300
+            }
+        ]
+        ```
+    ''')
+
+    instruction_text = (
+        "📝 Введите данные WiFi-сети в формате JSON или отправьте JSON-файл.\n\n"
+        "Вы можете отправить:\n"
+        "• **Одиночную запись** - один JSON-объект\n"
+        "• **Множественные записи** - JSON-массив объектов\n\n"
     )
 
-    try:
-        await callback.message.bot.set_chat_menu_button(
-            chat_id=callback.message.chat.id,
-            menu_button=types.MenuButtonCommands(),
-        )
-    except Exception:
-        logger.debug("Не удалось установить chat menu button", exc_info=True)
+    await callback.message.answer(instruction_text, parse_mode="Markdown")
+    await callback.message.answer(example_single, parse_mode="Markdown")
+    await callback.message.answer("... или ...", parse_mode="Markdown")
+    await callback.message.answer(example_multiple, parse_mode="Markdown")
 
     await callback.answer()
 
@@ -305,22 +338,28 @@ async def handle_json_file(message: types.Message) -> None:
 # Обработчик текстового ввода для новой записи
 @bot_router.message()
 async def process_new_entry(message: types.Message) -> None:
-    """Обрабатывает текстовое сообщение как JSON и передаёт в контроллер."""
-
+    """Обрабатывает текстовое сообщение как JSON-пэйлоад."""
     payload_text = message.text or ""
 
-    # Просто передаём JSON строку в контроллер
     try:
-        data = controller.parse_json(payload_text)
-    except ValueError as ve:
-        logger.debug("Invalid JSON received from user", exc_info=True)
-        await message.answer(f"❌ Некорректный JSON: {ve}", reply_markup=get_main_keyboard())
+        parsed_data = json.loads(payload_text)
+    except json.JSONDecodeError as e:
+        await message.answer(f"❌ Некорректный JSON: {e}", reply_markup=get_main_keyboard())
         return
 
-    # Используем общую функцию обработки
-    success = await _process_single_wifi_record(data, message)
-    if success:
-        await message.answer("✅ Данные успешно сохранены в таблицу!", reply_markup=get_main_keyboard())
+    # Определяем тип данных: одиночная запись или массив записей
+    if isinstance(parsed_data, list):
+        # Множественные записи
+        await _process_multiple_wifi_records(parsed_data, message)
+    elif isinstance(parsed_data, dict):
+        # Одиночная запись
+        success = await _process_single_wifi_record(parsed_data, message)
+        if success:
+            await message.answer("✅ Данные успешно сохранены в таблицу!", reply_markup=get_main_keyboard())
+        else:
+            await message.answer("❌ Не удалось сохранить данные. Проверьте формат.", reply_markup=get_main_keyboard())
+    else:
+        await message.answer("❌ Неподдерживаемый формат JSON. Ожидается объект или массив.", reply_markup=get_main_keyboard())
 
 
 # Обработчик кнопки "Инструкция"
@@ -332,45 +371,34 @@ async def show_instructions(callback: types.CallbackQuery) -> None:
         📚 *Инструкция по использованию WiFi Data Bot*
 
         Этот бот предназначен для сбора и хранения данных о WiFi-сетях.
-        Вы можете добавлять данные о сетях, просматривать их в таблице и получать информацию о функционале.
 
         *Функционал бота:*
-        - *Таблица*: Показывает все сохранённые данные о WiFi-сетях в формате таблицы.
-        - *Начать новое заполнение*: Позволяет добавить новую WiFi-сеть, отправив данные в формате JSON.
-        - *Инструкция*: Выводит это сообщение.
+        - *Таблица*: Показывает все сохранённые данные о WiFi-сетях
+        - *Начать новое заполнение*: Добавить новые WiFi-сети
+        - *Инструкция*: Это сообщение
 
         *Способы добавления данных:*
         1. *Текстовый JSON*: Отправьте JSON-строку как текстовое сообщение
         2. *JSON-файл*: Отправьте файл с расширением .json
 
-        *Обработка данных:*
-        - Одиночные записи сохраняются напрямую в базу данных
-        - Массивы записей отправляются в data_processor для пакетной обработки
+        *Форматы данных:*
+        - *Одиночная запись*: JSON-объект с данными одной сети
+        - *Множественные записи*: JSON-массив объектов
 
-        *Формат данных:*
+        *Пример одиночной записи:*
         ```json
         {
             "bssid": "00:11:22:33:44:55",
             "frequency": 2412,
             "rssi": -50,
             "ssid": "MyWiFi",
-            "timestamp": 1698115200,
-            "channel_bandwidth": "20MHz",
-            "capabilities": "WPA2-PSK"
+            "timestamp": 1698115200
         }
         ```
 
-        *Примечание:* Некоторые поля могут быть пустыми или отсутствовать - бот обработает такие случаи.
+        *Обязательные поля:* bssid, frequency, rssi, ssid, timestamp
 
-        *Обозначения в таблице:*
-        - *SSID*: Имя WiFi-сети.
-        - *BSSID*: MAC-адрес точки доступа.
-        - *Частота*: Частота в МГц.
-        - *RSSI*: Уровень сигнала в дБм.
-        - *Канал*: Ширина канала.
-        - *Время*: Время обнаружения (Unix timestamp).
-        - *Капабилити*: Поддерживаемые протоколы.
-        Если возникли ошибки, проверьте формат JSON или свяжитесь с разработчиком.
+        Если возникли ошибки, проверьте формат JSON.
         """
     )
 
