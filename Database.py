@@ -48,7 +48,8 @@ class WiFiDB:
 
             for col_name, col_type in new_columns.items():
                 if col_name not in columns:
-                    cursor.execute(f"ALTER TABLE wifi_networks ADD COLUMN {col_name} {col_type}")
+                    cursor.execute(f"ALTER TABLE wifi_networks ADD COLUMN \
+                                   {col_name} {col_type}")
 
             conn.commit()
 
@@ -80,7 +81,8 @@ class WiFiDB:
                 if key not in data:
                     raise ValueError(f"Отсутствует обязательное поле: {key}")
 
-            optional_string_fields = ["password", "dns_server", "gateway", "my_ip"]
+            optional_string_fields = \
+                ["password", "dns_server", "gateway", "my_ip"]
             for field in optional_string_fields:
                 if field in data and not isinstance(data[field], str):
                     raise ValueError(f"{field} должен быть строкой")
@@ -126,7 +128,7 @@ class WiFiDB:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
-                    INSERT INTO wifi_networks 
+                    INSERT INTO wifi_networks
                     (bssid, frequency, rssi, ssid, timestamp, channel_bandwidth, capabilities, password, dns_server, gateway, my_ip, signal_level, pavilion_number, floor)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (

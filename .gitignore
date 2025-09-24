@@ -7,3 +7,6 @@ __pycache__
 
 # files
 *.log
+
+# База Данных
+Database.py
