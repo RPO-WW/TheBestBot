@@ -82,13 +82,10 @@ async def cmd_start(message: types.Message) -> None:
 # Обработчик кнопки "Таблица"
 @handlers_router.callback_query(F.data == "show_table")
 async def show_table(callback: types.CallbackQuery) -> None:
-    """Отправляет пользователю текстовую таблицу со всеми записями.
-
-    NOTE: контроллер должен предоставлять метод `db.read_all()` возвращающий
-    список словарей-записей. Если этого метода нет, оставлен TODO.
-    """
+    """Отправляет пользователю текстовую таблицу со всеми записями."""
     try:
-        records = controller.db.read_all()  # TODO: Реализуйте read_all() в WiFiDB, если его нет
+        # Получаем все записи через контроллер
+        records = controller.get_all_records()
     except Exception as exc:
         logger.exception("Failed to read records from DB")
         await callback.message.answer(f"Ошибка при получении таблицы: {exc}")
@@ -118,15 +115,12 @@ async def start_new_entry(callback: types.CallbackQuery) -> None:
         "📝 Введите данные WiFi-сети в формате JSON, например:\n" + example
     )
 
-    # В оригинальном коде использовалась установка кнопки меню — это не обязательно,
-    # но оставляем попытку установить её безопасно, чтобы не ломать UX у некоторых клиентов.
     try:
         await callback.message.bot.set_chat_menu_button(
             chat_id=callback.message.chat.id,
             menu_button=types.MenuButtonCommands(),
         )
     except Exception:
-        # Не фатальная ошибка — просто логируем
         logger.debug("Не удалось установить chat menu button", exc_info=True)
 
     await callback.answer()
@@ -135,39 +129,21 @@ async def start_new_entry(callback: types.CallbackQuery) -> None:
 # Обработчик текстового ввода для новой записи
 @handlers_router.message()
 async def process_new_entry(message: types.Message) -> None:
-    """Обрабатывает текстовое сообщение как JSON-пэйлоад и сохраняет сеть через Controller.
-
-    В этой реализации мы явно парсим JSON и вызываем методы контроллера
-    `parse_json`, `build_network`, `save_network` чтобы иметь контроль над ошибками
-    и возвращаемым кодом.
-    """
+    """Обрабатывает текстовое сообщение как JSON и передаёт в контроллер."""
     payload_text = message.text or ""
 
+    # Просто передаём JSON строку в контроллер
     try:
-        data = controller.parse_json(payload_text)
-    except ValueError as ve:
-        logger.debug("Invalid JSON received from user", exc_info=True)
-        await message.answer(f"❌ Некорректный JSON: {ve}", reply_markup=get_main_keyboard())
-        return
-
-    try:
-        network = controller.build_network(data)
-    except (KeyError, TypeError, ValueError) as e:
-        logger.debug("Invalid network data", exc_info=True)
-        await message.answer(f"❌ Неверные данные сети: {e}", reply_markup=get_main_keyboard())
-        return
-
-    try:
-        saved = controller.save_network(network)
+        success = controller.process_wifi_data(payload_text)
     except Exception as e:
-        logger.exception("DB error when saving network")
-        await message.answer(f"❌ Ошибка при сохранении в БД: {e}", reply_markup=get_main_keyboard())
+        logger.exception("Error processing WiFi data")
+        await message.answer(f"❌ Ошибка при обработке данных: {e}", reply_markup=get_main_keyboard())
         return
 
-    if saved:
+    if success:
         await message.answer("✅ Данные успешно сохранены в таблицу!", reply_markup=get_main_keyboard())
     else:
-        await message.answer("❌ Не удалось сохранить данные в БД.", reply_markup=get_main_keyboard())
+        await message.answer("❌ Не удалось сохранить данные. Проверьте формат JSON.", reply_markup=get_main_keyboard())
 
 
 # Обработчик кнопки "Инструкция"
