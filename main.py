@@ -2,30 +2,33 @@ import asyncio
 import os
 
 from loguru import logger
-from dotenv import load_dotenv, find_dotenv
+from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 
 from controler import Controller
 from handlers import handlers_router
 
-load_dotenv(find_dotenv())
-TOKEN = os.getenv("TOKEN")
+load_dotenv()
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-dp = Dispatcher()
-dp.include_router(bot_router)
+logger.add("file.log",
+           format="{time:YYYY-MM-DD at HH:mm:ss} | {level} | {message}",
+           rotation="3 days",
+           backtrace=True,
+           diagnose=True)
+
+logger.info("Бот инициализирован")
 
 
 async def main():
-    logger.add(
-        "file.log",
-        format="{time:YYYY-MM-DD at HH:mm:ss} | {level} | {message}",
-        rotation="3 days",
-        backtrace=True,
-        diagnose=True,
-    )
+    if not BOT_TOKEN:
+        logger.error("Токен не задан. Добавьте BOT_TOKEN в .env.")
+        raise ValueError("Токен не задан. Добавьте BOT_TOKEN в .env.")
 
-    bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
+    bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
+    dp = Dispatcher()
+    dp.include_router(handlers_router)
 
     logger.info("Бот запущен")
 
