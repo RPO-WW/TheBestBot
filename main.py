@@ -7,8 +7,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 
 from controler import Controller
-from handlers import bot_router
-
+from handlers import handlers_router
 
 load_dotenv(find_dotenv())
 TOKEN = os.getenv("TOKEN")
