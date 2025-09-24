@@ -6,16 +6,14 @@ from dotenv import load_dotenv, find_dotenv
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 
-
 from controler import Controller
 from handlers import handlers_router
-
 
 load_dotenv(find_dotenv())
 TOKEN = os.getenv("TOKEN")
 
 dp = Dispatcher()
-dp.include_router(handlers_router)
+dp.include_router(bot_router)
 
 
 async def main():
