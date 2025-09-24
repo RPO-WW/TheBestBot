@@ -33,10 +33,10 @@ async def main():
 
     logger.info("Бот запущен")
 
-
     controller = Controller()
     controller.logic()
-    
+
+
     try:
         await dp.start_polling(bot)
     finally:
