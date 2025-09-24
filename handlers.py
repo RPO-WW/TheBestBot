@@ -13,7 +13,7 @@ from controler import Controller  # Импорт вашего Controller
 logger = logging.getLogger(__name__)
 
 # Создаём маршрутизатор
-handlers_router = Router()
+bot_router = Router()
 
 # Инициализация Controller
 controller = Controller()
@@ -68,9 +68,8 @@ def _format_records_table(records: List[Dict[str, Any]]) -> str:
 
 
 # Обработчик команды /start
-@handlers_router.message(Command("start"))
-async def cmd_start(message: types.Message) -> None:
-    """Приветственное сообщение с основной клавиатурой."""
+@bot_router.message(Command("start"))
+async def cmd_start(message: types.Message):
     welcome_text = (
         "Добро пожаловать в WiFi Data Bot! 🌐\n"
         "Я помогаю собирать и хранить данные о WiFi-сетях.\n"
@@ -80,7 +79,7 @@ async def cmd_start(message: types.Message) -> None:
 
 
 # Обработчик кнопки "Таблица"
-@handlers_router.callback_query(F.data == "show_table")
+@bot_router.callback_query(F.data == "show_table")
 async def show_table(callback: types.CallbackQuery) -> None:
     """Отправляет пользователю текстовую таблицу со всеми записями."""
     try:
@@ -103,7 +102,7 @@ async def show_table(callback: types.CallbackQuery) -> None:
 
 
 # Обработчик кнопки "Начать новое заполнение"
-@handlers_router.callback_query(F.data == "new_entry")
+@bot_router.callback_query(F.data == "new_entry")
 async def start_new_entry(callback: types.CallbackQuery) -> None:
     """Просит пользователя прислать JSON с данными о WiFi-сети."""
     example = (
@@ -127,7 +126,7 @@ async def start_new_entry(callback: types.CallbackQuery) -> None:
 
 
 # Обработчик текстового ввода для новой записи
-@handlers_router.message()
+@bot_router.message()
 async def process_new_entry(message: types.Message) -> None:
     """Обрабатывает текстовое сообщение как JSON и передаёт в контроллер."""
     payload_text = message.text or ""
@@ -147,7 +146,7 @@ async def process_new_entry(message: types.Message) -> None:
 
 
 # Обработчик кнопки "Инструкция"
-@handlers_router.callback_query(F.data == "instructions")
+@bot_router.callback_query(F.data == "instructions")
 async def show_instructions(callback: types.CallbackQuery) -> None:
     """Отправляет подробную инструкцию пользователю."""
     instructions = textwrap.dedent(

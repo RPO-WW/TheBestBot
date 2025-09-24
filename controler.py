@@ -80,4 +80,3 @@ class Controller:
     def logic(self):
         """Placeholder for additional logic, e.g., processing data or interacting with DB."""
         pass
-
