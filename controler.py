@@ -78,6 +78,6 @@ class Controller:
         return self.save_network(network)
 
     def logic(self):
-        """Placeholder for additional logic, e.g., processing data or interacting with DB."""
+        """Placeholder for additional logic, e.g., processing data
+          or interacting with DB."""
         pass
-
