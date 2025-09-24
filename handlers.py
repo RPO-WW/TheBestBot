@@ -31,10 +31,10 @@ def get_main_keyboard() -> InlineKeyboardMarkup:
     """Создаёт основную inline-клавиатуру для бота."""
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="📊 Таблица", callback_data="show_table"),
-            InlineKeyboardButton(text="➕ Новое заполнение", callback_data="new_entry"),
+            InlineKeyboardButton(text="📊 Таблица", callback_data="action:show_table"),
+            InlineKeyboardButton(text="➕ Новое заполнение", callback_data="action:new_entry"),
         ],
-        [InlineKeyboardButton(text="📚 Инструкция", callback_data="instructions")]
+        [InlineKeyboardButton(text="📚 Инструкция", callback_data="action:instructions")]
     ])
     return keyboard
 
@@ -228,9 +228,10 @@ async def cmd_start(message: types.Message):
 
 
 # Обработчик кнопки "Таблица"
-@bot_router.callback_query(F.data == "show_table")
+@bot_router.callback_query(F.data == "action:show_table")
 async def show_table(callback: types.CallbackQuery) -> None:
     """Отправляет пользователю текстовую таблицу со всеми записями."""
+    logger.debug("Callback received for show_table: %s", callback.data)
     try:
         records = controller.db.read_all()
 
@@ -251,9 +252,10 @@ async def show_table(callback: types.CallbackQuery) -> None:
 
 
 # Обработчик кнопки "Начать новое заполнение"
-@bot_router.callback_query(F.data == "new_entry")
+@bot_router.callback_query(F.data == "action:new_entry")
 async def start_new_entry(callback: types.CallbackQuery) -> None:
     """Просит пользователя прислать JSON с данными о WiFi-сети."""
+    logger.debug("Callback received for new_entry: %s", callback.data)
     example = (
         '{"bssid": "00:11:22:33:44:55", "frequency": 2412, "rssi": -50, '
         '"ssid": "MyWiFi", "timestamp": 1698115200, "channel_bandwidth": "20MHz", '
@@ -324,9 +326,10 @@ async def process_new_entry(message: types.Message) -> None:
 
 
 # Обработчик кнопки "Инструкция"
-@bot_router.callback_query(F.data == "instructions")
+@bot_router.callback_query(F.data == "action:instructions")
 async def show_instructions(callback: types.CallbackQuery) -> None:
     """Отправляет подробную инструкцию пользователю."""
+    logger.debug("Callback received for instructions: %s", callback.data)
     instructions = textwrap.dedent(
         """
         📚 *Инструкция по использованию WiFi Data Bot*

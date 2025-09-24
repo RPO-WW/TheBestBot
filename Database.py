@@ -174,6 +174,14 @@ class WiFiDB:
             print(f"[Ошибка чтения]: {e}")
             return []
 
+    def read_all(self) -> List[Dict[str, Any]]:
+        """Compatibility alias for reading all records.
+
+        Some parts of the codebase expect a `read_all()` method. This simply
+        delegates to `read()` with no `bssid` to return all rows.
+        """
+        return self.read()
+
     def update(self, bssid: str, data: Dict[str, Any]) -> bool:
         if not self.checker(data):
             return False
