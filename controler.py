@@ -5,7 +5,6 @@ from typing import Any, Dict, Optional
 from Database import WiFiDB
 
 
-
 @dataclass
 class WiFiNetwork:
     bssid: str
