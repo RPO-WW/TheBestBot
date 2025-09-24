@@ -4,7 +4,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from controler import Controller  # Импорт вашего Controller
 
 # Создаём маршрутизатор
-handlers_router = Router()
+bot_router = Router()
 
 # Инициализация Controller
 controller = Controller()
@@ -23,7 +23,7 @@ def get_main_keyboard() -> InlineKeyboardMarkup:
 
 
 # Обработчик команды /start
-@handlers_router.message(Command("start"))
+@bot_router.message(Command("start"))
 async def cmd_start(message: types.Message):
     welcome_text = (
         "Добро пожаловать в WiFi Data Bot! 🌐\n"
@@ -34,7 +34,7 @@ async def cmd_start(message: types.Message):
 
 
 # Обработчик кнопки "Таблица"
-@handlers_router.callback_query(F.data == "show_table")
+@bot_router.callback_query(F.data == "show_table")
 async def show_table(callback: types.CallbackQuery):
     try:
         # Предполагаем, что WiFiDB имеет метод read_all() для получения всех записей
@@ -64,7 +64,7 @@ async def show_table(callback: types.CallbackQuery):
 
 
 # Обработчик кнопки "Начать новое заполнение"
-@handlers_router.callback_query(F.data == "new_entry")
+@bot_router.callback_query(F.data == "new_entry")
 async def start_new_entry(callback: types.CallbackQuery):
     await callback.message.answer(
         "📝 Введите данные WiFi-сети в формате JSON, например:\n"
@@ -81,7 +81,7 @@ async def start_new_entry(callback: types.CallbackQuery):
 
 
 # Обработчик текстового ввода для новой записи
-@handlers_router.message()
+@bot_router.message()
 async def process_new_entry(message: types.Message):
     try:
         success = controller.process_payload_and_save(message.text)
@@ -102,7 +102,7 @@ async def process_new_entry(message: types.Message):
 
 
 # Обработчик кнопки "Инструкция"
-@handlers_router.callback_query(F.data == "instructions")
+@bot_router.callback_query(F.data == "instructions")
 async def show_instructions(callback: types.CallbackQuery):
     instructions = (
         "📚 **Инструкция по использованию WiFi Data Bot**\n\n"

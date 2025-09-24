@@ -1,5 +1,3 @@
-# database.py
-
 import sqlite3
 import re
 from typing import Dict, List, Optional, Any
