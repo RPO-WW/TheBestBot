@@ -5,12 +5,6 @@ from typing import Any, Dict, Optional, List
 
 from Database import WiFiDB
 
-logger.add("file.log",
-           format="{time:YYYY-MM-DD at HH:mm:ss} | {level} | {message}",
-           rotation="3 days",
-           backtrace=True,
-           diagnose=True)
-
 logger.info("Контроллер инициализирован")
 
 
@@ -31,6 +25,9 @@ class Controller:
     через WiFiDB."""
 
     def __init__(self, db: Optional[WiFiDB] = None):
+        if hasattr(self, '_initialized'):
+            return  # Предотвращаем повторную инициализацию
+        self._initialized = True
         self.db = db or WiFiDB()
         self.data_processor = None
         self.data = None
@@ -55,12 +52,34 @@ class Controller:
         если поля отсутствуют/некорректны."""
 
         logger.debug(f"Строим WiFiNetwork из данных: {data}")
+        try:
+            frequency = int(data['frequency'])
+            if frequency <= 0:
+                raise ValueError("Frequency должна быть положительным числом")
+        except (ValueError, KeyError) as e:
+            logger.error(f"Ошибка валидации frequency: {e}")
+            raise ValueError(f"Некорректное значение frequency: {e}")
+
+        try:
+            rssi = int(data['rssi'])
+        except (ValueError, KeyError) as e:
+            logger.error(f"Ошибка валидации rssi: {e}")
+            raise ValueError(f"Некорректное значение rssi: {e}")
+
+        try:
+            timestamp = int(data['timestamp'])
+            if timestamp <= 0:
+                raise ValueError("Timestamp должен быть положительным числом")
+        except (ValueError, KeyError) as e:
+            logger.error(f"Ошибка валидации timestamp: {e}")
+            raise ValueError(f"Некорректное значение timestamp: {e}")
+
         return WiFiNetwork(
             bssid=data['bssid'],
-            frequency=int(data['frequency']),
-            rssi=int(data['rssi']),
+            frequency=frequency,
+            rssi=rssi,
             ssid=str(data['ssid']),
-            timestamp=int(data['timestamp']),
+            timestamp=timestamp,
             channel_bandwidth=str(data['channel_bandwidth']),
             capabilities=str(data['capabilities']),
         )
@@ -106,7 +125,11 @@ class Controller:
         return self.save_network(network)
 
     def logic(self):
-        """Плейсхолдер для дополнительной логики, например,
-        обработки данных или взаимодействия с БД."""
+        """Логика контроллера: инициализация БД и проверка."""
         logger.debug("Дополнительная логика вызвана")
+<<<<<<< HEAD
+=======
+        # Убрал тест, чтобы избежать повторных вызовов __init__
+        # Если нужно, добавьте условную логику здесь
+>>>>>>> 1297c67f9f3060bdc201896f00ba105eedd5e7cf
         pass
