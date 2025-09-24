@@ -31,10 +31,10 @@ def get_main_keyboard() -> InlineKeyboardMarkup:
     """Создаёт основную inline-клавиатуру для бота."""
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="Таблица", callback_data="show_table"),
-            InlineKeyboardButton(text="Начать новое заполнение", callback_data="new_entry"),
+            InlineKeyboardButton(text="📊 Таблица", callback_data="show_table"),
+            InlineKeyboardButton(text="➕ Новое заполнение", callback_data="new_entry"),
         ],
-        [InlineKeyboardButton(text="Инструкция", callback_data="instructions")]
+        [InlineKeyboardButton(text="📚 Инструкция", callback_data="instructions")]
     ])
     return keyboard
 
@@ -234,7 +234,7 @@ async def show_table(callback: types.CallbackQuery) -> None:
         return
 
     if not records:
-        await callback.message.answer("Таблица пуста. Добавьте данные через 'Начать новое заполнение'.")
+        await callback.message.answer("Таблица пуста. Добавьте данные через '➕ Новое заполнение'.")
         await callback.answer()
         return
 
@@ -395,12 +395,12 @@ async def show_instructions(callback: types.CallbackQuery) -> None:
             "timestamp": 1698115200
         }
         ```
+<<<<<<< HEAD
 
         *Обязательные поля:* bssid, frequency, rssi, ssid, timestamp
 
         Если возникли ошибки, проверьте формат JSON.
+=======
+>>>>>>> 8df2a6ae81cbbba7dc5ea44c92959a8d7ddbd142
         """
     )
-
-    await callback.message.answer(instructions, parse_mode="Markdown", reply_markup=get_main_keyboard())
-    await callback.answer()
