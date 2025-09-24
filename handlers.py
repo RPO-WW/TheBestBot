@@ -31,10 +31,10 @@ def get_main_keyboard() -> InlineKeyboardMarkup:
     """Создаёт основную inline-клавиатуру для бота."""
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="Таблица", callback_data="show_table"),
-            InlineKeyboardButton(text="Начать новое заполнение", callback_data="new_entry"),
+            InlineKeyboardButton(text="📊 Таблица", callback_data="show_table"),
+            InlineKeyboardButton(text="➕ Новое заполнение", callback_data="new_entry"),
         ],
-        [InlineKeyboardButton(text="Инструкция", callback_data="instructions")]
+        [InlineKeyboardButton(text="📚 Инструкция", callback_data="instructions")]
     ])
     return keyboard
 
@@ -241,7 +241,7 @@ async def show_table(callback: types.CallbackQuery) -> None:
         return
 
     if not records:
-        await callback.message.answer("Таблица пуста. Добавьте данные через 'Начать новое заполнение'.")
+        await callback.message.answer("Таблица пуста. Добавьте данные через '➕ Новое заполнение'.")
         await callback.answer()
         return
 
@@ -359,20 +359,5 @@ async def show_instructions(callback: types.CallbackQuery) -> None:
             "capabilities": "WPA2-PSK"
         }
         ```
-
-        *Примечание:* Некоторые поля могут быть пустыми или отсутствовать - бот обработает такие случаи.
-
-        *Обозначения в таблице:*
-        - *SSID*: Имя WiFi-сети.
-        - *BSSID*: MAC-адрес точки доступа.
-        - *Частота*: Частота в МГц.
-        - *RSSI*: Уровень сигнала в дБм.
-        - *Канал*: Ширина канала.
-        - *Время*: Время обнаружения (Unix timestamp).
-        - *Капабилити*: Поддерживаемые протоколы.
-        Если возникли ошибки, проверьте формат JSON или свяжитесь с разработчиком.
         """
     )
-
-    await callback.message.answer(instructions, parse_mode="Markdown", reply_markup=get_main_keyboard())
-    await callback.answer()
