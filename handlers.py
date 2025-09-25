@@ -1,26 +1,53 @@
-import logging
 import json
 import textwrap
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from aiogram import Router, F, types
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from loguru import logger
 
-from controler import Controller  # Импорт вашего Controller
+from controler import Controller
 
 
-# Логгер для модуля
-logger = logging.getLogger(__name__)
+# Функция для перевода уровня логирования на русский
+def russian_level(record):
+    levels = {
+        "TRACE": "ТРЕЙС",
+        "DEBUG": "ОТЛАДКА",
+        "INFO": "ИНФО",
+        "SUCCESS": "УСПЕХ",
+        "WARNING": "ПРЕДУПРЕЖДЕНИЕ",
+        "ERROR": "ОШИБКА",
+        "CRITICAL": "КРИТИЧНО",
+    }
+    record["level"].name = levels.get(record["level"].name, record["level"].name)
+    return record
 
-# Создаём маршрутизатор
+
+# Настройка loguru для вывода в терминал с русскими уровнями
+logger.remove()  # Удаляем стандартный обработчик
+logger.add(
+    sink=lambda msg: print(msg, end=""),
+    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <12}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+    level="DEBUG",
+    colorize=True,
+    filter=russian_level,
+)
+
+# Вывод в файл (опционально, без перевода — для анализа)
+logger.add(
+    "bot.log",
+    rotation="10 MB",
+    retention="10 days",
+    level="DEBUG",
+    format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}"
+)
+
 bot_router = Router()
-
-# Инициализация Controller
 controller = Controller()
 
 
-def _truncate(value: str, length: int) -> str:
-    """Короткая обёртка для безопасного усечения строк."""
+def _truncate(value: Optional[Any], length: int) -> str:
     if value is None:
         return ""
     s = str(value)
@@ -28,13 +55,12 @@ def _truncate(value: str, length: int) -> str:
 
 
 def get_main_keyboard() -> InlineKeyboardMarkup:
-    """Создаёт основную inline-клавиатуру для бота."""
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="📊 Таблица", callback_data="show_table"),
-            InlineKeyboardButton(text="➕ Новое заполнение", callback_data="new_entry"),
+            InlineKeyboardButton(text="📊 Таблица", callback_data="action:show_table"),
+            InlineKeyboardButton(text="➕ Новое заполнение", callback_data="action:new_entry"),
         ],
-        [InlineKeyboardButton(text="📚 Инструкция", callback_data="instructions")]
+        [InlineKeyboardButton(text="📚 Инструкция", callback_data="action:instructions")]
     ])
     return keyboard
 
@@ -124,12 +150,14 @@ async def _process_single_wifi_record(data: Dict[str, Any], message: types.Messa
     """Обрабатывает одну запись WiFi-данных."""
     # Подготавливаем данные
     prepared_data = _prepare_wifi_data(data)
-    
+
     # Проверяем валидность данных
     is_valid, error_msg = _validate_wifi_data(prepared_data)
-    if not is_valid:
-        await message.answer(f"❌ Ошибка валидации данных: {error_msg}", reply_markup=get_main_keyboard())
-        return False
+    if error_msg >= 1:
+        if not is_valid:
+            await message.answer(f"❌ Ошибка валидации данных: {error_msg}", reply_markup=get_main_keyboard())
+            return False
+    exit
 
     try:
         # Пробуем сохранить через контроллер
@@ -222,14 +250,15 @@ async def cmd_start(message: types.Message):
 
 
 # Обработчик кнопки "Таблица"
-@bot_router.callback_query(F.data == "show_table")
+@bot_router.callback_query(F.data == "action:show_table")
 async def show_table(callback: types.CallbackQuery) -> None:
     """Отправляет пользователю текстовую таблицу со всеми записями."""
     try:
-        records = controller.db.read_all()
+        records = controller.get_all_networks()
+        logger.info(f"Получено {len(records)} записей из базы данных")
     except Exception as exc:
         logger.exception("Failed to read records from DB")
-        await callback.message.answer(f"Ошибка при получении таблицы: {exc}")
+        await callback.message.answer(f"❌ Ошибка при получении таблицы: {exc}")
         await callback.answer()
         return
 
@@ -252,8 +281,8 @@ async def show_table(callback: types.CallbackQuery) -> None:
 
 
 # Обработчик кнопки "Начать новое заполнение"
-@bot_router.callback_query(F.data == "new_entry")
-async def start_new_entry(callback: types.CallbackQuery) -> None:
+@bot_router.callback_query(F.data == "action:new_entry")
+async def new_entry_prompt(callback: types.CallbackQuery) -> None:
     """Просит пользователя прислать JSON с данными о WiFi-сети."""
     example_single = textwrap.dedent('''
         📋 *Одиночная запись:*
@@ -264,7 +293,7 @@ async def start_new_entry(callback: types.CallbackQuery) -> None:
             "rssi": -50,
             "ssid": "MyWiFi",
             "timestamp": 1698115200,
-            "channel_bandwidth": "20MHz",
+            "channel_bandwidth": "20",
             "capabilities": "WPA2-PSK"
         }
         ```
@@ -303,7 +332,6 @@ async def start_new_entry(callback: types.CallbackQuery) -> None:
     await callback.message.answer(example_single, parse_mode="Markdown")
     await callback.message.answer("... или ...", parse_mode="Markdown")
     await callback.message.answer(example_multiple, parse_mode="Markdown")
-
     await callback.answer()
 
 
@@ -335,10 +363,12 @@ async def handle_json_file(message: types.Message) -> None:
         await message.answer(f"❌ Ошибка при обработке файла: {e}", reply_markup=get_main_keyboard())
 
 
-# Обработчик текстового ввода для новой записи
+# Обработчик текстового ввода
 @bot_router.message()
-async def process_new_entry(message: types.Message) -> None:
+async def handle_text_or_file(message: types.Message) -> None:
     """Обрабатывает текстовое сообщение как JSON-пэйлоад."""
+    logger.info(f"Обработка сообщения от пользователя {message.from_user.id}")
+    
     payload_text = message.text or ""
 
     try:
@@ -356,16 +386,14 @@ async def process_new_entry(message: types.Message) -> None:
         success = await _process_single_wifi_record(parsed_data, message)
         if success:
             await message.answer("✅ Данные успешно сохранены в таблицу!", reply_markup=get_main_keyboard())
-        else:
-            await message.answer("❌ Не удалось сохранить данные. Проверьте формат.", reply_markup=get_main_keyboard())
     else:
         await message.answer("❌ Неподдерживаемый формат JSON. Ожидается объект или массив.", reply_markup=get_main_keyboard())
 
 
 # Обработчик кнопки "Инструкция"
-@bot_router.callback_query(F.data == "instructions")
+@bot_router.callback_query(F.data == "action:instructions")
 async def show_instructions(callback: types.CallbackQuery) -> None:
-    """Отправляет подробную инструкцию пользователю."""
+    logger.debug("Получен запрос на отображение инструкции")
     instructions = textwrap.dedent(
         """
         📚 *Инструкция по использованию WiFi Data Bot*
@@ -392,15 +420,21 @@ async def show_instructions(callback: types.CallbackQuery) -> None:
             "frequency": 2412,
             "rssi": -50,
             "ssid": "MyWiFi",
-            "timestamp": 1698115200
+            "timestamp": 1698115200,
+            "channel_bandwidth": "20",
+            "capabilities": "WPA2-PSK"
         }
         ```
-<<<<<<< HEAD
 
         *Обязательные поля:* bssid, frequency, rssi, ssid, timestamp
 
         Если возникли ошибки, проверьте формат JSON.
-=======
->>>>>>> 8df2a6ae81cbbba7dc5ea44c92959a8d7ddbd142
         """
+    ).strip()
+
+    await callback.message.answer(
+        instructions,
+        parse_mode="Markdown",
+        reply_markup=get_main_keyboard()
     )
+    await callback.answer()

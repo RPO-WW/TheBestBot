@@ -1,7 +1,7 @@
 import json
 from loguru import logger
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 from Database import WiFiDB
 
@@ -103,6 +103,19 @@ class Controller:
             logger.error("Ошибка сохранения сети в БД")
         return result
 
+    def get_all_networks(self) -> List[Dict[str, Any]]:
+        """Получает все WiFi сети из базы данных."""
+        try:
+            # Проверяем, есть ли у базы данных метод read_all
+            if hasattr(self.db, 'read_all'):
+                return self.db.read_all()
+            else:
+                logger.error("У базы данных нет метода read_all")
+                return []
+        except Exception as e:
+            logger.error(f"Ошибка при чтении данных из БД: {e}")
+            return []
+
     def process_payload_and_save(self, payload: Any) -> bool:
         """Удобный метод: парсит payload, строит модель и сохраняет.
         Возвращает True при успехе."""
@@ -114,6 +127,3 @@ class Controller:
     def logic(self):
         """Логика контроллера: инициализация БД и проверка."""
         logger.debug("Дополнительная логика вызвана")
-        # Убрал тест, чтобы избежать повторных вызовов __init__
-        # Если нужно, добавьте условную логику здесь
-        pass
