@@ -363,4 +363,11 @@ async def show_instructions(callback: types.CallbackQuery) -> None:
         }
         ```
         """
+    ).strip()
+
+    await callback.message.answer(
+        instructions,
+        parse_mode="Markdown",
+        reply_markup=get_main_keyboard()
     )
+    await callback.answer()  # Подтверждаем нажатие кнопки
