@@ -106,7 +106,14 @@ async def show_instructions(callback: types.CallbackQuery) -> None:
             "capabilities": "WPA2-PSK"
         }
         """
+    ).strip()
+
+    await callback.message.answer(
+        instructions,
+        parse_mode="Markdown",
+        reply_markup=get_main_keyboard()
     )
+<<<<<<< HEAD
     await callback.message.answer(instructions, parse_mode="Markdown")
     await callback.answer()
 
@@ -178,3 +185,6 @@ async def handle_text_or_file(message: types.Message) -> None:
     except Exception as e:
         logger.error("Error processing single record: {}", e)
         await message.answer(f"Ошибка при обработке записи: {e}")
+=======
+    await callback.answer()  # Подтверждаем нажатие кнопки
+>>>>>>> dc915c2f680653ea37a87ea047816d5b4fab2de7
