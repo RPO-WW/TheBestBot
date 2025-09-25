@@ -157,7 +157,6 @@ async def _process_single_wifi_record(data: Dict[str, Any], message: types.Messa
         if not is_valid:
             await message.answer(f"❌ Ошибка валидации данных: {error_msg}", reply_markup=get_main_keyboard())
             return False
-    exit
 
     try:
         # Пробуем сохранить через контроллер
