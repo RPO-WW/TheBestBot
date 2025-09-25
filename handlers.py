@@ -50,7 +50,8 @@ def get_main_keyboard() -> InlineKeyboardMarkup:
 
 def _format_records_table(records: List[Dict[str, Any]]) -> str:
     if not records:
-        return "(нет записей)"
+        # Very short sample row to show expected fields (concise)
+        return "BSSID | SSID | RSSI | FREQ | TIMESTAMP\n00:11:22:33:44:55 | MyWiFi | -50 | 2412 | 1698115200"
     lines = ["BSSID | SSID | RSSI | FREQ | TIMESTAMP"]
     for r in records:
         lines.append(
@@ -113,7 +114,6 @@ async def show_instructions(callback: types.CallbackQuery) -> None:
         parse_mode="Markdown",
         reply_markup=get_main_keyboard()
     )
-<<<<<<< HEAD
     await callback.message.answer(instructions, parse_mode="Markdown")
     await callback.answer()
 
@@ -185,6 +185,3 @@ async def handle_text_or_file(message: types.Message) -> None:
     except Exception as e:
         logger.error("Error processing single record: {}", e)
         await message.answer(f"Ошибка при обработке записи: {e}")
-=======
-    await callback.answer()  # Подтверждаем нажатие кнопки
->>>>>>> dc915c2f680653ea37a87ea047816d5b4fab2de7

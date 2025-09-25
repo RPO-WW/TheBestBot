@@ -1,16 +1,21 @@
-#-Виртуальное окружение
+
+# Виртуальное окружение
 .venv
 .env
 
-# python
-__pycache__
+# Python cache
+__pycache__/
 
-# files
+# Log and database files
 *.log
-<<<<<<< HEAD
 *.db
-=======
+wifi_data.dp
+wifi_data.db
 
-# База Данных
+# Local editor/workspace
+.vscode/
+
+
+# Ignore database module by name (source file) if needed
 Database.py
->>>>>>> aa729abf3e497409b7a5c2bb40fc038bcc106adf
+
