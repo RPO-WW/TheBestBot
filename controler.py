@@ -52,8 +52,28 @@ class Controller:
         если поля отсутствуют/некорректны."""
 
         logger.debug(f"Строим WiFiNetwork из данных: {data}")
+        # Normalize possible alternative keys produced by scanners
+        # e.g. frequency_mhz, channel_bandwidth_mhz, center_frequency_mhz
+        norm = dict(data)  # shallow copy
+        if 'frequency' not in norm and 'frequency_mhz' in norm:
+            norm['frequency'] = norm['frequency_mhz']
+        if 'channel_bandwidth' not in norm and 'channel_bandwidth_mhz' in norm:
+            # keep numeric bandwidth as string (existing schema expects string like '20'/'40')
+            try:
+                bw = int(norm['channel_bandwidth_mhz'])
+                norm['channel_bandwidth'] = str(bw)
+            except Exception:
+                norm['channel_bandwidth'] = str(norm['channel_bandwidth_mhz'])
+        # If timestamp looks like milliseconds (large number), convert to seconds
+        if 'timestamp' in norm and isinstance(norm['timestamp'], int) and norm['timestamp'] > 10**12:
+            # timestamp in ms -> convert to seconds
+            try:
+                norm['timestamp'] = int(norm['timestamp'] // 1000)
+            except Exception:
+                pass
+
         try:
-            frequency = int(data['frequency'])
+            frequency = int(norm['frequency'])
             if frequency <= 0:
                 raise ValueError("Frequency должна быть положительным числом")
         except (ValueError, KeyError) as e:
@@ -61,13 +81,13 @@ class Controller:
             raise ValueError(f"Некорректное значение frequency: {e}")
 
         try:
-            rssi = int(data['rssi'])
+            rssi = int(norm['rssi'])
         except (ValueError, KeyError) as e:
             logger.error(f"Ошибка валидации rssi: {e}")
             raise ValueError(f"Некорректное значение rssi: {e}")
 
         try:
-            timestamp = int(data['timestamp'])
+            timestamp = int(norm['timestamp'])
             if timestamp <= 0:
                 raise ValueError("Timestamp должен быть положительным числом")
         except (ValueError, KeyError) as e:
@@ -75,13 +95,13 @@ class Controller:
             raise ValueError(f"Некорректное значение timestamp: {e}")
 
         return WiFiNetwork(
-            bssid=data['bssid'],
+            bssid=norm.get('bssid'),
             frequency=frequency,
             rssi=rssi,
-            ssid=str(data['ssid']),
+            ssid=str(norm.get('ssid', '')),
             timestamp=timestamp,
-            channel_bandwidth=str(data['channel_bandwidth']),
-            capabilities=str(data['capabilities']),
+            channel_bandwidth=str(norm.get('channel_bandwidth', '')),
+            capabilities=str(norm.get('capabilities', '')),
         )
 
     def save_network(self, network: WiFiNetwork) -> bool:
