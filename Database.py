@@ -1,6 +1,6 @@
 import sqlite3
 import re
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
 from tools.stroka_db import Stroka_Db
 
 
@@ -46,8 +46,7 @@ class WiFiDB:
 
             for col_name, col_type in new_columns.items():
                 if col_name not in columns:
-                    cursor.execute(f"ALTER TABLE wifi_networks ADD COLUMN \
-                                   {col_name} {col_type}")
+                    cursor.execute(f"ALTER TABLE wifi_networks ADD COLUMN {col_name} {col_type}")
 
             conn.commit()
 
@@ -69,57 +68,69 @@ class WiFiDB:
             "floor": stroka.floor if stroka.floor != 0 else None,
         }
 
-    def checker(self, data: Dict[str, Any]) -> bool:
-        try:
-            required_keys = [
-                "bssid", "frequency", "rssi",
-                "ssid", "timestamp", "channel_bandwidth", "capabilities"
-            ]
-            for key in required_keys:
-                if key not in data:
-                    raise ValueError(f"Отсутствует обязательное поле: {key}")
+    def checker(self, data: Dict[str, Any]) -> Union[bool, str]:
+        # Проверка обязательных полей
+        required_keys = [
+            "bssid", "frequency", "rssi",
+            "ssid", "timestamp", "channel_bandwidth", "capabilities"
+        ]
+        for key in required_keys:
+            if key not in data:
+                return f"Отсутствует обязательное поле: {key}"
 
-            optional_string_fields = \
-                ["password", "dns_server", "gateway", "my_ip"]
-            for field in optional_string_fields:
-                if field in data and not isinstance(data[field], str):
-                    raise ValueError(f"{field} должен быть строкой")
+        # Проверка типов необязательных строковых полей
+        optional_string_fields = ["password", "dns_server", "gateway", "my_ip"]
+        for field in optional_string_fields:
+            if field in data and not isinstance(data[field], str):
+                return f"Поле '{field}' должно быть строкой."
 
-            for field in ["signal_level", "pavilion_number", "floor"]:
-                if field in data:
-                    if not isinstance(data[field], int):
-                        raise ValueError(f"{field} должен быть целым числом")
+        # Проверка целочисленных необязательных полей
+        optional_int_fields = ["signal_level", "pavilion_number", "floor"]
+        for field in optional_int_fields:
+            if field in data and not isinstance(data[field], int):
+                return f"Поле '{field}' должно быть целым числом."
 
-            bssid_pattern = r'^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$'
-            if not re.match(bssid_pattern, data["bssid"]):
-                raise ValueError("Неверный формат BSSID (ожидается XX:XX:XX:XX:XX:XX)")
+        # Валидация BSSID
+        bssid_pattern = r'^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$'
+        if not re.match(bssid_pattern, data["bssid"]):
+            return "Неверный формат BSSID (ожидается XX:XX:XX:XX:XX:XX)"
 
-            if not isinstance(data["frequency"], int) or data["frequency"] <= 0:
-                raise ValueError("frequency должен быть положительным целым числом")
+        # Валидация frequency
+        freq = data["frequency"]
+        if not isinstance(freq, int) or freq <= 0:
+            return "Поле 'frequency' должно быть положительным целым числом."
 
-            if not isinstance(data["rssi"], int) or not (-100 <= data["rssi"] <= 0):
-                raise ValueError("rssi должен быть целым числом от -100 до 0")
+        # Валидация RSSI
+        rssi = data["rssi"]
+        if not isinstance(rssi, int) or not (-100 <= rssi <= 0):
+            return "Поле 'rssi' должно быть целым числом в диапазоне от -100 до 0."
 
-            if not isinstance(data["timestamp"], int) or data["timestamp"] < 0:
-                raise ValueError("timestamp должен быть неотрицательным целым числом")
+        # Валидация timestamp
+        ts = data["timestamp"]
+        if not isinstance(ts, int) or ts < 0:
+            return "Поле 'timestamp' должно быть неотрицательным целым числом."
 
-            if not isinstance(data["ssid"], str) or len(data["ssid"]) == 0:
-                raise ValueError("ssid должен быть непустой строкой")
+        # Валидация SSID
+        ssid = data["ssid"]
+        if not isinstance(ssid, str) or len(ssid) == 0:
+            return "Поле 'ssid' должно быть непустой строкой."
 
-            if not isinstance(data["channel_bandwidth"], str) or data["channel_bandwidth"] not in ["20", "40", "80", "160"]:
-                raise ValueError("channel_bandwidth должен быть строкой: '20', '40', '80' или '160'")
+        # Валидация ширины канала
+        bw = data["channel_bandwidth"]
+        if not isinstance(bw, str) or bw not in {"20", "40", "80", "160"}:
+            return "Поле 'channel_bandwidth' должно быть одной из строк: '20', '40', '80', '160'."
 
-            if not isinstance(data["capabilities"], str):
-                raise ValueError("capabilities должен быть строкой")
+        # Валидация capabilities
+        cap = data["capabilities"]
+        if not isinstance(cap, str):
+            return "Поле 'capabilities' должно быть строкой."
 
-            return True
-
-        except Exception as e:
-            print(f"[Ошибка валидации]: {e}")
-            return False
+        return True
 
     def create(self, data: Dict[str, Any]) -> bool:
-        if not self.checker(data):
+        validation_result = self.checker(data)
+        if validation_result is not True:
+            print(f"[Ошибка валидации]: {validation_result}")
             return False
 
         try:
@@ -127,7 +138,8 @@ class WiFiDB:
                 cursor = conn.cursor()
                 cursor.execute("""
                     INSERT INTO wifi_networks
-                    (bssid, frequency, rssi, ssid, timestamp, channel_bandwidth, capabilities, password, dns_server, gateway, my_ip, signal_level, pavilion_number, floor)
+                    (bssid, frequency, rssi, ssid, timestamp, channel_bandwidth, capabilities,
+                     password, dns_server, gateway, my_ip, signal_level, pavilion_number, floor)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     data["bssid"],
@@ -151,7 +163,7 @@ class WiFiDB:
             print("[Ошибка] Запись с таким BSSID уже существует.")
             return False
         except Exception as e:
-            print(f"[Ошибка создания]: {e}")
+            print(f"[Ошибка создания записи]: {e}")
             return False
 
     def create_from_stroka(self, stroka: Stroka_Db) -> bool:
@@ -163,29 +175,23 @@ class WiFiDB:
             with sqlite3.connect(self.db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
-
                 if bssid:
                     cursor.execute("SELECT * FROM wifi_networks WHERE bssid = ?", (bssid,))
                 else:
                     cursor.execute("SELECT * FROM wifi_networks")
-
                 rows = cursor.fetchall()
                 return [dict(row) for row in rows]
-
         except Exception as e:
             print(f"[Ошибка чтения]: {e}")
             return []
 
     def read_all(self) -> List[Dict[str, Any]]:
-        """Compatibility alias for reading all records.
-
-        Some parts of the codebase expect a `read_all()` method. This simply
-        delegates to `read()` with no `bssid` to return all rows.
-        """
         return self.read()
 
     def update(self, bssid: str, data: Dict[str, Any]) -> bool:
-        if not self.checker(data):
+        validation_result = self.checker(data)
+        if validation_result is not True:
+            print(f"[Ошибка валидации при обновлении]: {validation_result}")
             return False
 
         existing = self.read(bssid)
@@ -252,6 +258,7 @@ class WiFiDB:
             print(f"[Ошибка удаления]: {e}")
             return False
 
+    # Совместимость с CRUD-интерфейсом
     def crud_create(self, data):
         if isinstance(data, Stroka_Db):
             return self.create_from_stroka(data)
