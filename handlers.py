@@ -212,11 +212,43 @@ async def _process_json_file_content(content: str, message: types.Message) -> No
         return
 
     # Определяем тип данных: одиночная запись или массив записей
+    # If the parsed JSON matches the example sentinel values, inform user it's only an example
+    def _is_example_payload(obj) -> bool:
+        """Detect the example payload shown in the bot instructions.
+
+        We consider it an example when BSSID equals the common placeholder
+        '00:11:22:33:44:55' or when timestamp/frequency/rssi match the short example.
+        """
+        if not isinstance(obj, dict):
+            return False
+        bssid = obj.get('bssid', '')
+        if isinstance(bssid, str) and bssid.strip() == '00:11:22:33:44:55':
+            return True
+        # other loose checks
+        if obj.get('ssid') == 'MyWiFi':
+            return True
+        return False
+
     if isinstance(parsed_data, list):
         # Множественные записи
+        # If any entry looks like the example, notify the user instead of processing
+        if any(_is_example_payload(item) for item in parsed_data if isinstance(item, dict)):
+            await message.answer(
+                "⚠️ Похоже, вы прислали пример из инструкции, а не реальные данные. Пожалуйста, пришлите реальные записи.",
+                reply_markup=get_main_keyboard(),
+            )
+            return
+
         await _process_multiple_wifi_records(parsed_data, message)
     elif isinstance(parsed_data, dict):
         # Одиночная запись
+        if _is_example_payload(parsed_data):
+            await message.answer(
+                "⚠️ Похоже, вы прислали пример из инструкции, а не реальные данные. Пожалуйста, пришлите реальные записи.",
+                reply_markup=get_main_keyboard(),
+            )
+            return
+
         success = await _process_single_wifi_record(parsed_data, message)
         if success:
             await message.answer("✅ Данные из файла успешно сохранены в таблицу!", reply_markup=get_main_keyboard())
@@ -368,11 +400,35 @@ async def handle_text_or_file(message: types.Message) -> None:
         return
 
     # Определяем тип данных: одиночная запись или массив записей
+    def _is_example_payload(obj) -> bool:
+        if not isinstance(obj, dict):
+            return False
+        bssid = obj.get('bssid', '')
+        if isinstance(bssid, str) and bssid.strip() == '00:11:22:33:44:55':
+            return True
+        if obj.get('ssid') == 'MyWiFi':
+            return True
+        return False
+
     if isinstance(parsed_data, list):
         # Множественные записи
+        if any(_is_example_payload(item) for item in parsed_data if isinstance(item, dict)):
+            await message.answer(
+                "⚠️ Похоже, вы прислали пример из инструкции, а не реальные данные. Пожалуйста, пришлите реальные записи.",
+                reply_markup=get_main_keyboard(),
+            )
+            return
+
         await _process_multiple_wifi_records(parsed_data, message)
     elif isinstance(parsed_data, dict):
         # Одиночная запись
+        if _is_example_payload(parsed_data):
+            await message.answer(
+                "⚠️ Похоже, вы прислали пример из инструкции, а не реальные данные. Пожалуйста, пришлите реальные записи.",
+                reply_markup=get_main_keyboard(),
+            )
+            return
+
         success = await _process_single_wifi_record(parsed_data, message)
         if success:
             await message.answer("✅ Данные успешно сохранены в таблицу!", reply_markup=get_main_keyboard())
