@@ -130,10 +130,28 @@ def _prepare_wifi_data(data: Dict[str, Any]) -> Dict[str, Any]:
 
 async def _process_single_wifi_record(data: Dict[str, Any], message: types.Message, state: FSMContext) -> Optional[str]:
     prepared_data = _prepare_wifi_data(data)
+<<<<<<< HEAD
     is_valid, error_msg = _validate_wifi_data(prepared_data)
     if not is_valid:
         await message.answer(f"❌ Ошибка валидации данных: {error_msg}", reply_markup=get_main_keyboard())
         return None
+=======
+
+    # Глобальный словарь (вне функции)
+    error_messages_sent = {}
+
+    # В функции:
+    chat_id = message.chat.id
+
+    is_valid = _validate_wifi_data(prepared_data)
+    if not is_valid:
+        if chat_id not in error_messages_sent or not error_messages_sent[chat_id]:
+            error_messages_sent[chat_id] = True
+        return False
+    else:
+        # Сбрасываем флаг при успешной валидации
+        error_messages_sent[chat_id] = False
+>>>>>>> bfabc4fa7538bc8046eea3f0dd66337ef7fcdde1
 
     try:
         network = controller.build_network(prepared_data)
@@ -141,12 +159,20 @@ async def _process_single_wifi_record(data: Dict[str, Any], message: types.Messa
         if bssid:
             return bssid
         else:
+<<<<<<< HEAD
             await message.answer("❌ Не удалось сохранить данные в БД.", reply_markup=get_main_keyboard())
             return None
     except Exception as e:
         logger.exception("Error processing WiFi record")
         await message.answer(f"❌ Ошибка при обработке данных: {e}", reply_markup=get_main_keyboard())
         return None
+=======
+            return False
+
+    except Exception as e:
+        logger.exception("Error processing WiFi record")
+        return False
+>>>>>>> bfabc4fa7538bc8046eea3f0dd66337ef7fcdde1
 
 
 async def _process_multiple_wifi_records(records: List[Dict[str, Any]], message: types.Message) -> None:
@@ -177,7 +203,7 @@ async def _process_multiple_wifi_records(records: List[Dict[str, Any]], message:
             logger.exception(f"Ошибка при обработке записи #{i}")
 
     result_message = (
-        f"✅ Обработка завершена!\n\n"
+        f"Обработка завершена!\n\n"
         f"• Успешно: {success_count}/{total_count}\n"
         f"• Ошибки: {error_count}/{total_count}"
     )
@@ -191,6 +217,7 @@ async def _process_json_file_content(content: str, message: types.Message, state
         await message.answer(f"❌ Ошибка парсинга JSON: {e}", reply_markup=get_main_keyboard())
         return
 
+<<<<<<< HEAD
     if isinstance(parsed_data, list):
         await _process_multiple_wifi_records(parsed_data, message)
     elif isinstance(parsed_data, dict):
@@ -199,6 +226,49 @@ async def _process_json_file_content(content: str, message: types.Message, state
             await state.update_data(bssid=bssid)
             await message.answer("🏢 Введите номер павильона:")
             await state.set_state(Form.waiting_for_pavilion)
+=======
+    # Определяем тип данных: одиночная запись или массив записей
+    # If the parsed JSON matches the example sentinel values, inform user it's only an example
+    def _is_example_payload(obj) -> bool:
+        """Detect the example payload shown in the bot instructions.
+
+        We consider it an example when BSSID equals the common placeholder
+        '00:11:22:33:44:55' or when timestamp/frequency/rssi match the short example.
+        """
+        if not isinstance(obj, dict):
+            return False
+        bssid = obj.get('bssid', '')
+        if isinstance(bssid, str) and bssid.strip() == '00:11:22:33:44:55':
+            return True
+        # other loose checks
+        if obj.get('ssid') == 'MyWiFi':
+            return True
+        return False
+
+    if isinstance(parsed_data, list):
+        # Множественные записи
+        # If any entry looks like the example, notify the user instead of processing
+        if any(_is_example_payload(item) for item in parsed_data if isinstance(item, dict)):
+            await message.answer(
+                "⚠️ Похоже, вы прислали пример из инструкции, а не реальные данные. Пожалуйста, пришлите реальные записи.",
+                reply_markup=get_main_keyboard(),
+            )
+            return
+
+        await _process_multiple_wifi_records(parsed_data, message)
+    elif isinstance(parsed_data, dict):
+        # Одиночная запись
+        if _is_example_payload(parsed_data):
+            await message.answer(
+                "⚠️ Похоже, вы прислали пример из инструкции, а не реальные данные. Пожалуйста, пришлите реальные записи.",
+                reply_markup=get_main_keyboard(),
+            )
+            return
+
+        success = await _process_single_wifi_record(parsed_data, message)
+        if success:
+            await message.answer("✅ Данные из файла успешно сохранены в таблицу!", reply_markup=get_main_keyboard())
+>>>>>>> bfabc4fa7538bc8046eea3f0dd66337ef7fcdde1
     else:
         await message.answer("❌ Неподдерживаемый формат JSON. Ожидается объект или массив.", reply_markup=get_main_keyboard())
 
@@ -316,6 +386,7 @@ async def handle_text_or_file(message: types.Message, state: FSMContext) -> None
         await message.answer(f"❌ Некорректный JSON: {e}", reply_markup=get_main_keyboard())
         return
 
+<<<<<<< HEAD
     if isinstance(parsed_data, list):
         await _process_multiple_wifi_records(parsed_data, message)
     elif isinstance(parsed_data, dict):
@@ -324,6 +395,41 @@ async def handle_text_or_file(message: types.Message, state: FSMContext) -> None
             await state.update_data(bssid=bssid)
             await message.answer("🏢 Введите номер павильона:")
             await state.set_state(Form.waiting_for_pavilion)
+=======
+    # Определяем тип данных: одиночная запись или массив записей
+    def _is_example_payload(obj) -> bool:
+        if not isinstance(obj, dict):
+            return False
+        bssid = obj.get('bssid', '')
+        if isinstance(bssid, str) and bssid.strip() == '00:11:22:33:44:55':
+            return True
+        if obj.get('ssid') == 'MyWiFi':
+            return True
+        return False
+
+    if isinstance(parsed_data, list):
+        # Множественные записи
+        if any(_is_example_payload(item) for item in parsed_data if isinstance(item, dict)):
+            await message.answer(
+                "⚠️ Похоже, вы прислали пример из инструкции, а не реальные данные. Пожалуйста, пришлите реальные записи.",
+                reply_markup=get_main_keyboard(),
+            )
+            return
+
+        await _process_multiple_wifi_records(parsed_data, message)
+    elif isinstance(parsed_data, dict):
+        # Одиночная запись
+        if _is_example_payload(parsed_data):
+            await message.answer(
+                "⚠️ Похоже, вы прислали пример из инструкции, а не реальные данные. Пожалуйста, пришлите реальные записи.",
+                reply_markup=get_main_keyboard(),
+            )
+            return
+
+        success = await _process_single_wifi_record(parsed_data, message)
+        if success:
+            await message.answer("✅ Данные успешно сохранены в таблицу!", reply_markup=get_main_keyboard())
+>>>>>>> bfabc4fa7538bc8046eea3f0dd66337ef7fcdde1
     else:
         await message.answer("❌ Неподдерживаемый формат JSON. Ожидается объект или массив.", reply_markup=get_main_keyboard())
 
