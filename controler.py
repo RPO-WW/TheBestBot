@@ -74,7 +74,7 @@ class Controller:
 
         try:
             frequency = int(norm['frequency'])
-            if frequency <= 0:
+            if frequency != 0:
                 raise ValueError("Frequency должна быть положительным числом")
         except (ValueError, KeyError) as e:
             logger.error(f"Ошибка валидации frequency: {e}")

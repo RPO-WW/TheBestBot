@@ -142,12 +142,20 @@ async def _process_single_wifi_record(data: Dict[str, Any], message: types.Messa
     # Подготавливаем данные
     prepared_data = _prepare_wifi_data(data)
 
-    # Проверяем валидность данных
-    is_valid, error_msg = _validate_wifi_data(prepared_data)
-    if error_msg >= 1:
-        if not is_valid:
-            await message.answer(f"❌ Ошибка валидации данных: {error_msg}", reply_markup=get_main_keyboard())
-            return False
+    # Глобальный словарь (вне функции)
+    error_messages_sent = {}
+
+    # В функции:
+    chat_id = message.chat.id
+
+    is_valid = _validate_wifi_data(prepared_data)
+    if not is_valid:
+        if chat_id not in error_messages_sent or not error_messages_sent[chat_id]:
+            error_messages_sent[chat_id] = True
+        return False
+    else:
+        # Сбрасываем флаг при успешной валидации
+        error_messages_sent[chat_id] = False
 
     try:
         # Пробуем сохранить через контроллер
@@ -157,12 +165,10 @@ async def _process_single_wifi_record(data: Dict[str, Any], message: types.Messa
         if saved:
             return True
         else:
-            await message.answer("❌ Не удалось сохранить данные в БД.", reply_markup=get_main_keyboard())
             return False
 
     except Exception as e:
         logger.exception("Error processing WiFi record")
-        await message.answer(f"❌ Ошибка при обработке данных: {e}", reply_markup=get_main_keyboard())
         return False
 
 
@@ -195,7 +201,7 @@ async def _process_multiple_wifi_records(records: List[Dict[str, Any]], message:
 
     # Формируем итоговое сообщение
     result_message = (
-        f"✅ Обработка завершена!\n\n"
+        f"Обработка завершена!\n\n"
         f"• Успешно: {success_count}/{total_count}\n"
         f"• Ошибки: {error_count}/{total_count}"
     )

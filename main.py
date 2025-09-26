@@ -35,7 +35,6 @@ async def main():
     controller = Controller()
     controller.logic()
 
-
     try:
         await dp.start_polling(bot)
     finally:
