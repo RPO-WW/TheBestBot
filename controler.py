@@ -20,23 +20,14 @@ class WiFiNetwork:
 
 
 class Controller:
-    """Контроллер принимает JSON (строка или байты), парсит в dict,
-    создаёт WiFiNetwork и предоставляет методы для сохранения/чтения
-    через WiFiDB."""
-
     def __init__(self, db: Optional[WiFiDB] = None):
         if hasattr(self, '_initialized'):
-            return  # Предотвращаем повторную инициализацию
+            return
         self._initialized = True
         self.db = db or WiFiDB()
-        self.data_processor = None
-        self.data = None
         logger.info("Контроллер Controller создан")
 
     def parse_json(self, payload: Any) -> Dict[str, Any]:
-        """Парсит JSON (str/bytes/dict) в dict. Вызывает ValueError
-        при некорректном вводе."""
-
         if isinstance(payload, dict):
             return payload
         try:
@@ -48,25 +39,16 @@ class Controller:
             raise ValueError(f"Некорректный JSON: {e}")
 
     def build_network(self, data: Dict[str, Any]) -> WiFiNetwork:
-        """Конвертирует dict в WiFiNetwork. Вызывает KeyError/TypeError,
-        если поля отсутствуют/некорректны."""
-
-        logger.debug(f"Строим WiFiNetwork из данных: {data}")
-        # Normalize possible alternative keys produced by scanners
-        # e.g. frequency_mhz, channel_bandwidth_mhz, center_frequency_mhz
-        norm = dict(data)  # shallow copy
+        norm = dict(data)
         if 'frequency' not in norm and 'frequency_mhz' in norm:
             norm['frequency'] = norm['frequency_mhz']
         if 'channel_bandwidth' not in norm and 'channel_bandwidth_mhz' in norm:
-            # keep numeric bandwidth as string (existing schema expects string like '20'/'40')
             try:
                 bw = int(norm['channel_bandwidth_mhz'])
                 norm['channel_bandwidth'] = str(bw)
             except Exception:
                 norm['channel_bandwidth'] = str(norm['channel_bandwidth_mhz'])
-        # If timestamp looks like milliseconds (large number), convert to seconds
         if 'timestamp' in norm and isinstance(norm['timestamp'], int) and norm['timestamp'] > 10**12:
-            # timestamp in ms -> convert to seconds
             try:
                 norm['timestamp'] = int(norm['timestamp'] // 1000)
             except Exception:
@@ -95,7 +77,7 @@ class Controller:
             raise ValueError(f"Некорректное значение timestamp: {e}")
 
         return WiFiNetwork(
-            bssid=norm.get('bssid'),
+            bssid=norm.get('bssid', ""),
             frequency=frequency,
             rssi=rssi,
             ssid=str(norm.get('ssid', '')),
@@ -104,8 +86,7 @@ class Controller:
             capabilities=str(norm.get('capabilities', '')),
         )
 
-    def save_network(self, network: WiFiNetwork) -> bool:
-        """Сохраняет WiFiNetwork в БД через WiFiDB.create()."""
+    def save_network(self, network: WiFiNetwork) -> Optional[str]:
         data = {
             'bssid': network.bssid,
             'frequency': network.frequency,
@@ -116,34 +97,51 @@ class Controller:
             'capabilities': network.capabilities,
         }
         logger.info(f"Сохраняем сеть: {network.ssid} ({network.bssid})")
-        result = self.db.create(data)
-        if result:
+        success = self.db.create(data)
+        if success:
             logger.info("Сеть успешно сохранена в БД")
+            return network.bssid
         else:
             logger.error("Ошибка сохранения сети в БД")
-        return result
+            return None
+
+    def update_network(self, bssid: str, password: str = "", pavilion_number: int = 0) -> bool:
+        existing = self.db.read(bssid)
+        if not existing:
+            logger.error(f"Запись с BSSID {bssid} не найдена для обновления.")
+            return False
+
+        update_data = {
+            'bssid': bssid,
+            'frequency': existing[0]['frequency'],
+            'rssi': existing[0]['rssi'],
+            'ssid': existing[0]['ssid'],
+            'timestamp': existing[0]['timestamp'],
+            'channel_bandwidth': existing[0]['channel_bandwidth'],
+            'capabilities': existing[0]['capabilities'],
+            'password': password,
+            'pavilion_number': pavilion_number,
+        }
+
+        success = self.db.update(bssid, update_data)
+        if success:
+            logger.info(f"Запись {bssid} успешно обновлена с паролем и павильоном")
+        else:
+            logger.error(f"Не удалось обновить запись {bssid}")
+        return success
 
     def get_all_networks(self) -> List[Dict[str, Any]]:
-        """Получает все WiFi сети из базы данных."""
         try:
-            # Проверяем, есть ли у базы данных метод read_all
-            if hasattr(self.db, 'read_all'):
-                return self.db.read_all()
-            else:
-                logger.error("У базы данных нет метода read_all")
-                return []
+            return self.db.read_all()
         except Exception as e:
             logger.error(f"Ошибка при чтении данных из БД: {e}")
             return []
 
     def process_payload_and_save(self, payload: Any) -> bool:
-        """Удобный метод: парсит payload, строит модель и сохраняет.
-        Возвращает True при успехе."""
         logger.info("Начинаем обработку payload")
         self.data = self.parse_json(payload)
         network = self.build_network(self.data)
-        return self.save_network(network)
+        return self.save_network(network) is not None
 
     def logic(self):
-        """Логика контроллера: инициализация БД и проверка."""
         logger.debug("Дополнительная логика вызвана")

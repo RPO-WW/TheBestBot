@@ -3,6 +3,8 @@ import textwrap
 from typing import Any, Dict, List, Optional
 from aiogram import Router, F, types
 from aiogram.filters import Command
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from loguru import logger
 
@@ -24,8 +26,8 @@ def russian_level(record):
     return record
 
 
-# Настройка loguru для вывода в терминал с русскими уровнями
-logger.remove()  # Удаляем стандартный обработчик
+# Настройка loguru
+logger.remove()
 logger.add(
     sink=lambda msg: print(msg, end=""),
     format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <12}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
@@ -33,8 +35,6 @@ logger.add(
     colorize=True,
     filter=russian_level,
 )
-
-# Вывод в файл (опционально, без перевода — для анализа)
 logger.add(
     "bot.log",
     rotation="10 MB",
@@ -47,6 +47,11 @@ bot_router = Router()
 controller = Controller()
 
 
+class Form(StatesGroup):
+    waiting_for_pavilion = State()
+    waiting_for_password = State()
+
+
 def _truncate(value: Optional[Any], length: int) -> str:
     if value is None:
         return ""
@@ -55,24 +60,17 @@ def _truncate(value: Optional[Any], length: int) -> str:
 
 
 def get_main_keyboard() -> InlineKeyboardMarkup:
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+    return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="📊 Таблица", callback_data="action:show_table"),
             InlineKeyboardButton(text="➕ Новое заполнение", callback_data="action:new_entry"),
         ],
         [InlineKeyboardButton(text="📚 Инструкция", callback_data="action:instructions")]
     ])
-    return keyboard
 
 
 def _format_records_table(records: List[Dict[str, Any]]) -> str:
-    """Форматирует список записей в компактный текст для отправки в чат.
-
-    Если нет записей — возвращает очень краткий пример-рядок, чтобы пользователь
-    понимал ожидаемые поля.
-    """
     if not records:
-        # Very short sample row to show expected fields (concise)
         return "BSSID | SSID | RSSI | FREQ | TIMESTAMP\n00:11:22:33:44:55 | MyWiFi | -50 | 2412 | 1698115200"
 
     lines = ["BSSID | SSID | RSSI | FREQ | TIMESTAMP"]
@@ -84,14 +82,11 @@ def _format_records_table(records: List[Dict[str, Any]]) -> str:
 
 
 def _validate_wifi_data(data: Dict[str, Any]) -> tuple[bool, str]:
-    """Проверяет валидность данных WiFi-сети."""
     required_fields = ['bssid', 'frequency', 'rssi', 'ssid', 'timestamp']
-
     for field in required_fields:
         if field not in data:
             return False, f"Отсутствует обязательное поле: {field}"
 
-    # Проверка типов данных
     if not isinstance(data['bssid'], str) or len(data['bssid']) == 0:
         return False, "BSSID должен быть непустой строкой"
 
@@ -111,10 +106,7 @@ def _validate_wifi_data(data: Dict[str, Any]) -> tuple[bool, str]:
 
 
 def _prepare_wifi_data(data: Dict[str, Any]) -> Dict[str, Any]:
-    """Подготавливает данные WiFi-сети, обрабатывая пустые значения."""
     prepared_data = data.copy()
-    
-    # Обработка пустых или None значений
     for key in prepared_data:
         if prepared_data[key] is None:
             if key in ['frequency', 'rssi', 'timestamp']:
@@ -124,8 +116,7 @@ def _prepare_wifi_data(data: Dict[str, Any]) -> Dict[str, Any]:
         elif prepared_data[key] == "":
             if key in ['bssid']:
                 prepared_data[key] = "00:00:00:00:00:00"
-    
-    # Гарантируем наличие всех обязательных полей
+
     required_fields = ['bssid', 'frequency', 'rssi', 'ssid', 'timestamp', 'channel_bandwidth', 'capabilities']
     for field in required_fields:
         if field not in prepared_data:
@@ -133,41 +124,32 @@ def _prepare_wifi_data(data: Dict[str, Any]) -> Dict[str, Any]:
                 prepared_data[field] = 0
             else:
                 prepared_data[field] = ""
-    
+
     return prepared_data
 
 
-async def _process_single_wifi_record(data: Dict[str, Any], message: types.Message) -> bool:
-    """Обрабатывает одну запись WiFi-данных."""
-    # Подготавливаем данные
+async def _process_single_wifi_record(data: Dict[str, Any], message: types.Message, state: FSMContext) -> Optional[str]:
     prepared_data = _prepare_wifi_data(data)
-
-    # Проверяем валидность данных
     is_valid, error_msg = _validate_wifi_data(prepared_data)
-    if error_msg >= 1:
-        if not is_valid:
-            await message.answer(f"❌ Ошибка валидации данных: {error_msg}", reply_markup=get_main_keyboard())
-            return False
+    if not is_valid:
+        await message.answer(f"❌ Ошибка валидации данных: {error_msg}", reply_markup=get_main_keyboard())
+        return None
 
     try:
-        # Пробуем сохранить через контроллер
         network = controller.build_network(prepared_data)
-        saved = controller.save_network(network)
-
-        if saved:
-            return True
+        bssid = controller.save_network(network)
+        if bssid:
+            return bssid
         else:
             await message.answer("❌ Не удалось сохранить данные в БД.", reply_markup=get_main_keyboard())
-            return False
-
+            return None
     except Exception as e:
         logger.exception("Error processing WiFi record")
         await message.answer(f"❌ Ошибка при обработке данных: {e}", reply_markup=get_main_keyboard())
-        return False
+        return None
 
 
 async def _process_multiple_wifi_records(records: List[Dict[str, Any]], message: types.Message) -> None:
-    """Обрабатывает множественные записи WiFi-данных."""
     if not records:
         await message.answer("❌ Нет записей для обработки.", reply_markup=get_main_keyboard())
         return
@@ -185,7 +167,8 @@ async def _process_multiple_wifi_records(records: List[Dict[str, Any]], message:
             continue
 
         try:
-            if await _process_single_wifi_record(record, message):
+            bssid = await _process_single_wifi_record(record, message, FSMContext(state=None))
+            if bssid:
                 success_count += 1
             else:
                 error_count += 1
@@ -193,40 +176,36 @@ async def _process_multiple_wifi_records(records: List[Dict[str, Any]], message:
             error_count += 1
             logger.exception(f"Ошибка при обработке записи #{i}")
 
-    # Формируем итоговое сообщение
     result_message = (
         f"✅ Обработка завершена!\n\n"
         f"• Успешно: {success_count}/{total_count}\n"
         f"• Ошибки: {error_count}/{total_count}"
     )
-
     await message.answer(result_message, reply_markup=get_main_keyboard())
 
 
-async def _process_json_file_content(content: str, message: types.Message) -> None:
-    """Обрабатывает содержимое JSON-файла."""
+async def _process_json_file_content(content: str, message: types.Message, state: FSMContext) -> None:
     try:
         parsed_data = json.loads(content)
     except json.JSONDecodeError as e:
         await message.answer(f"❌ Ошибка парсинга JSON: {e}", reply_markup=get_main_keyboard())
         return
 
-    # Определяем тип данных: одиночная запись или массив записей
     if isinstance(parsed_data, list):
-        # Множественные записи
         await _process_multiple_wifi_records(parsed_data, message)
     elif isinstance(parsed_data, dict):
-        # Одиночная запись
-        success = await _process_single_wifi_record(parsed_data, message)
-        if success:
-            await message.answer("✅ Данные из файла успешно сохранены в таблицу!", reply_markup=get_main_keyboard())
+        bssid = await _process_single_wifi_record(parsed_data, message, state)
+        if bssid:
+            await state.update_data(bssid=bssid)
+            await message.answer("🏢 Введите номер павильона:")
+            await state.set_state(Form.waiting_for_pavilion)
     else:
         await message.answer("❌ Неподдерживаемый формат JSON. Ожидается объект или массив.", reply_markup=get_main_keyboard())
 
 
-# Обработчик команды /start
 @bot_router.message(Command("start"))
-async def cmd_start(message: types.Message):
+async def cmd_start(message: types.Message, state: FSMContext):
+    await state.clear()
     welcome_text = (
         "Добро пожаловать в WiFi Data Bot! 🌐\n"
         "Я помогаю собирать и хранить данные о WiFi-сетях.\n"
@@ -239,10 +218,8 @@ async def cmd_start(message: types.Message):
     await message.answer(welcome_text, reply_markup=get_main_keyboard())
 
 
-# Обработчик кнопки "Таблица"
 @bot_router.callback_query(F.data == "action:show_table")
 async def show_table(callback: types.CallbackQuery) -> None:
-    """Отправляет пользователю текстовую таблицу со всеми записями."""
     try:
         records = controller.get_all_networks()
         logger.info(f"Получено {len(records)} записей из базы данных")
@@ -258,22 +235,18 @@ async def show_table(callback: types.CallbackQuery) -> None:
         return
 
     table_text = _format_records_table(records)
-    
-    # Разбиваем длинные сообщения на части
     if len(table_text) > 4000:
         parts = [table_text[i:i+4000] for i in range(0, len(table_text), 4000)]
         for part in parts:
             await callback.message.answer(f"```\n{part}\n```", parse_mode="Markdown")
     else:
         await callback.message.answer(f"```\n{table_text}\n```", parse_mode="Markdown", reply_markup=get_main_keyboard())
-    
     await callback.answer()
 
 
-# Обработчик кнопки "Начать новое заполнение"
 @bot_router.callback_query(F.data == "action:new_entry")
-async def new_entry_prompt(callback: types.CallbackQuery) -> None:
-    """Просит пользователя прислать JSON с данными о WiFi-сети."""
+async def new_entry_prompt(callback: types.CallbackQuery, state: FSMContext):
+    await state.clear()
     example_single = textwrap.dedent('''
         📋 *Одиночная запись:*
         ```json
@@ -288,7 +261,6 @@ async def new_entry_prompt(callback: types.CallbackQuery) -> None:
         }
         ```
     ''')
-    
     example_multiple = textwrap.dedent('''
         📋 *Множественные записи (массив):*
         ```json
@@ -299,13 +271,6 @@ async def new_entry_prompt(callback: types.CallbackQuery) -> None:
                 "rssi": -50,
                 "ssid": "MyWiFi",
                 "timestamp": 1698115200
-            },
-            {
-                "bssid": "AA:BB:CC:DD:EE:FF",
-                "frequency": 5180,
-                "rssi": -65,
-                "ssid": "OfficeNet",
-                "timestamp": 1698115300
             }
         ]
         ```
@@ -325,65 +290,76 @@ async def new_entry_prompt(callback: types.CallbackQuery) -> None:
     await callback.answer()
 
 
-# Обработчик JSON-файлов
 @bot_router.message(F.document)
-async def handle_json_file(message: types.Message) -> None:
-    """Обрабатывает загруженные JSON-файлы."""
-    if not message.document:
-        return
-
-    # Проверяем, что это JSON файл
-    if not message.document.file_name.endswith('.json'):
+async def handle_json_file(message: types.Message, state: FSMContext) -> None:
+    if not message.document or not message.document.file_name.lower().endswith('.json'):
         await message.answer("❌ Пожалуйста, отправьте файл в формате JSON.", reply_markup=get_main_keyboard())
         return
 
     try:
-        # Скачиваем файл
         file = await message.bot.get_file(message.document.file_id)
         file_content = await message.bot.download_file(file.file_path)
         content_text = file_content.read().decode('utf-8')
-
         await message.answer("📥 Файл получен, начинаю обработку...")
-
-        # Обрабатываем содержимое файла
-        await _process_json_file_content(content_text, message)
-
+        await _process_json_file_content(content_text, message, state)
     except Exception as e:
         logger.exception("Error processing JSON file")
         await message.answer(f"❌ Ошибка при обработке файла: {e}", reply_markup=get_main_keyboard())
 
 
-# Обработчик текстового ввода
 @bot_router.message()
-async def handle_text_or_file(message: types.Message) -> None:
-    """Обрабатывает текстовое сообщение как JSON-пэйлоад."""
-    logger.info(f"Обработка сообщения от пользователя {message.from_user.id}")
-    
+async def handle_text_or_file(message: types.Message, state: FSMContext) -> None:
     payload_text = message.text or ""
-
     try:
         parsed_data = json.loads(payload_text)
     except json.JSONDecodeError as e:
         await message.answer(f"❌ Некорректный JSON: {e}", reply_markup=get_main_keyboard())
         return
 
-    # Определяем тип данных: одиночная запись или массив записей
     if isinstance(parsed_data, list):
-        # Множественные записи
         await _process_multiple_wifi_records(parsed_data, message)
     elif isinstance(parsed_data, dict):
-        # Одиночная запись
-        success = await _process_single_wifi_record(parsed_data, message)
-        if success:
-            await message.answer("✅ Данные успешно сохранены в таблицу!", reply_markup=get_main_keyboard())
+        bssid = await _process_single_wifi_record(parsed_data, message, state)
+        if bssid:
+            await state.update_data(bssid=bssid)
+            await message.answer("🏢 Введите номер павильона:")
+            await state.set_state(Form.waiting_for_pavilion)
     else:
         await message.answer("❌ Неподдерживаемый формат JSON. Ожидается объект или массив.", reply_markup=get_main_keyboard())
 
 
-# Обработчик кнопки "Инструкция"
+@bot_router.message(Form.waiting_for_pavilion)
+async def process_pavilion(message: types.Message, state: FSMContext):
+    try:
+        pavilion = int(message.text.strip())
+        if pavilion <= 0:
+            raise ValueError
+        await state.update_data(pavilion=pavilion)
+        await message.answer("🔑 Введите пароль от Wi-Fi сети:")
+        await state.set_state(Form.waiting_for_password)
+    except ValueError:
+        await message.answer("❌ Номер павильона должен быть положительным целым числом. Попробуйте снова:")
+        return
+
+
+@bot_router.message(Form.waiting_for_password)
+async def process_password(message: types.Message, state: FSMContext):
+    password = message.text.strip()
+    data = await state.get_data()
+    bssid = data.get("bssid")
+    pavilion = data.get("pavilion")
+
+    success = controller.update_network(bssid, password=password, pavilion_number=pavilion)
+    if success:
+        await message.answer("✅ Данные успешно обновлены!", reply_markup=get_main_keyboard())
+    else:
+        await message.answer("❌ Не удалось обновить данные.", reply_markup=get_main_keyboard())
+
+    await state.clear()
+
+
 @bot_router.callback_query(F.data == "action:instructions")
 async def show_instructions(callback: types.CallbackQuery) -> None:
-    logger.debug("Получен запрос на отображение инструкции")
     instructions = textwrap.dedent(
         """
         📚 *Инструкция по использованию WiFi Data Bot*
@@ -399,97 +375,13 @@ async def show_instructions(callback: types.CallbackQuery) -> None:
         1. *Текстовый JSON*: Отправьте JSON-строку как текстовое сообщение
         2. *JSON-файл*: Отправьте файл с расширением .json
 
-        *Форматы данных:*
-        - *Одиночная запись*: JSON-объект с данными одной сети
-        - *Множественные записи*: JSON-массив объектов
+        После добавления базовых данных бот запросит:
+        - Номер павильона (целое число)
+        - Пароль от Wi-Fi
 
-        *Пример одиночной записи:*
-        ```json
-        {
-            "bssid": "00:11:22:33:44:55",
-            "frequency": 2412,
-            "rssi": -50,
-            "ssid": "MyWiFi",
-            "timestamp": 1698115200,
-            "channel_bandwidth": "20",
-            "capabilities": "WPA2-PSK"
-        }
-        ```
-
-        *Обязательные поля:* bssid, frequency, rssi, ssid, timestamp
-
-        Если возникли ошибки, проверьте формат JSON.
+        Эти данные будут сохранены в таблицу.
         """
     ).strip()
 
-    await callback.message.answer(
-        instructions,
-        parse_mode="Markdown",
-        reply_markup=get_main_keyboard()
-    )
+    await callback.message.answer(instructions, parse_mode="Markdown", reply_markup=get_main_keyboard())
     await callback.answer()
-
-
-@bot_router.callback_query(F.data == "action:new_entry")
-async def new_entry_prompt(callback: types.CallbackQuery) -> None:
-    example_single = textwrap.dedent('''
-        📋 *Одиночная запись:*
-        ```json
-        {
-            "bssid": "00:11:22:33:44:55",
-            "frequency": 2412,
-            "rssi": -50,
-            "ssid": "MyWiFi",
-            "timestamp": 1698115200,
-            "channel_bandwidth": "20",
-            "capabilities": "WPA2-PSK"
-        }
-        ```
-    ''')
-    await callback.message.answer("Отправьте JSON (как текст или файл .json) с данными сети.")
-    await callback.message.answer(example_single, parse_mode="Markdown")
-    await callback.answer()
-
-
-@bot_router.message(F.document)
-async def handle_json_file(message: types.Message) -> None:
-    if not message.document:
-        return
-
-    if not message.document.file_name.lower().endswith('.json'):
-        await message.answer("❌ Пожалуйста, отправьте файл в формате JSON.", reply_markup=get_main_keyboard())
-        return
-
-    try:
-        file = await message.bot.get_file(message.document.file_id)
-        file_content = await message.bot.download_file(file.file_path)
-        content_text = file_content.read().decode('utf-8')
-        await message.answer("📥 Файл получен, начинаю обработку...")
-        await _process_json_file_content(content_text, message)
-    except Exception as e:
-        logger.exception("Error processing JSON file")
-        await message.answer(f"❌ Ошибка при обработке файла: {e}", reply_markup=get_main_keyboard())
-
-
-@bot_router.message()
-async def handle_text_or_file(message: types.Message) -> None:
-    logger.info(f"Обработка сообщения от пользователя {message.from_user.id}")
-    payload_text = message.text or ""
-
-    try:
-        parsed_data = json.loads(payload_text)
-    except json.JSONDecodeError as e:
-        await message.answer(f"❌ Некорректный JSON: {e}", reply_markup=get_main_keyboard())
-        return
-
-    if isinstance(parsed_data, list):
-        await _process_multiple_wifi_records(parsed_data, message)
-        return
-
-    if isinstance(parsed_data, dict):
-        success = await _process_single_wifi_record(parsed_data, message)
-        if success:
-            await message.answer("✅ Данные успешно сохранены в таблицу!", reply_markup=get_main_keyboard())
-        return
-
-    await message.answer("❌ Неподдерживаемый формат JSON. Ожидается объект или массив.", reply_markup=get_main_keyboard())
