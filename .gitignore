@@ -9,7 +9,6 @@ __pycache__/
 # Log and database files
 *.log
 *.db
-<<<<<<< HEAD
 wifi_data.dp
 wifi_data.db
 
@@ -20,5 +19,3 @@ wifi_data.db
 # Ignore database module by name (source file) if needed
 Database.py
 
-=======
->>>>>>> ed27eab7690a9200e666ff1765b09fb13ba616e2
