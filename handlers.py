@@ -67,8 +67,7 @@ def get_main_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="➕ Новое заполнение", callback_data="action:new_entry"),
         ],
         [
-            InlineKeyboardButton(text="🖼 Красиво", callback_data="action:show_table_pretty"),
-            InlineKeyboardButton(text="� Инструкция", callback_data="action:instructions"),
+            InlineKeyboardButton(text=" Инструкция", callback_data="action:instructions"),
         ]
     ])
 
@@ -265,8 +264,14 @@ async def show_table(callback: types.CallbackQuery) -> None:
         parts = [table_text[i:i+4000] for i in range(0, len(table_text), 4000)]
         for part in parts:
             await callback.message.answer(f"```\n{part}\n```", parse_mode="Markdown")
+        # after sending parts, provide an inline export button
+        export_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🖼 Скачать HTML", callback_data="action:show_table_pretty")]])
+        await callback.message.answer("Полная таблица слишком большая для одного сообщения. Вы можете скачать её целиком:", reply_markup=export_kb)
+        await callback.message.answer("", reply_markup=get_main_keyboard())
     else:
-        await callback.message.answer(f"```\n{table_text}\n```", parse_mode="Markdown", reply_markup=get_main_keyboard())
+        # attach an inline button to allow exporting the full table as a styled HTML
+        export_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🖼 Скачать HTML", callback_data="action:show_table_pretty")]])
+        await callback.message.answer(f"```\n{table_text}\n```", parse_mode="Markdown", reply_markup=export_kb)
     await callback.answer()
 
 
@@ -295,10 +300,14 @@ async def show_table_pretty(callback: types.CallbackQuery) -> None:
     bio.seek(0)
     filename = "wifi_table.html"
     try:
-        await callback.message.answer_document(types.InputFile(bio, filename=filename), reply_markup=get_main_keyboard())
-    except Exception:
+        # prefer bot.send_document with explicit chat_id to avoid context issues
+        await callback.message.bot.send_document(chat_id=callback.message.chat.id, document=types.InputFile(bio, filename=filename))
+        # also send main keyboard afterwards
+        await callback.message.answer("Готово — файл отправлен.", reply_markup=get_main_keyboard())
+    except Exception as e:
+        logger.exception("Failed to send HTML document to user")
         # fallback: send as text (may be large)
-        await callback.message.answer("Не удалось отправить файл, отправляю как текст.")
+        await callback.message.answer("❌ Не удалось отправить файл. Отправляю таблицу как текст:")
         await callback.message.answer(f"```\n{_format_records_table(records)}\n```", parse_mode="Markdown")
 
     await callback.answer()
