@@ -56,3 +56,24 @@ Security
 Notes
 - Скрипт рассчитан на Windows (использует `netsh` и `ipconfig`).
 - Для Linux/macOS нужно адаптировать команды.
+
+Pretty table export
+-------------------
+
+The bot now supports exporting a nicely styled HTML table of all records.
+There is a reusable helper in `tools/table_renderer.py` which you can use
+from other scripts as well. Example usage:
+
+```python
+from tools.table_renderer import render_html_table
+
+# records is a list of dicts returned by controller.get_all_networks()
+html = render_html_table(records, title="Таблица WiFi-сетей")
+with open('wifi_table.html', 'w', encoding='utf-8') as f:
+	f.write(html)
+
+# open wifi_table.html in browser to view the styled, scrollable table
+```
+
+In the Telegram bot UI there is a button "🖼 Красиво" which generates the
+HTML and sends it as a .html file to the user.

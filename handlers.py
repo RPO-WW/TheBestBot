@@ -9,6 +9,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from loguru import logger
 
 from controler import Controller
+from tools.table_renderer import render_html_table
 
 
 # Функция для перевода уровня логирования на русский
@@ -65,7 +66,10 @@ def get_main_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="📊 Таблица", callback_data="action:show_table"),
             InlineKeyboardButton(text="➕ Новое заполнение", callback_data="action:new_entry"),
         ],
-        [InlineKeyboardButton(text="📚 Инструкция", callback_data="action:instructions")]
+        [
+            InlineKeyboardButton(text="🖼 Красиво", callback_data="action:show_table_pretty"),
+            InlineKeyboardButton(text="� Инструкция", callback_data="action:instructions"),
+        ]
     ])
 
 
@@ -162,11 +166,6 @@ async def _process_single_wifi_record(data: Dict[str, Any], message: types.Messa
         logger.exception("Error processing WiFi record")
         await message.answer(f"❌ Ошибка при обработке данных: {e}", reply_markup=get_main_keyboard())
         return None
-            return False
-
-    except Exception as e:
-        logger.exception("Error processing WiFi record")
-        return False
 
 
 async def _process_multiple_wifi_records(records: List[Dict[str, Any]], message: types.Message) -> None:
@@ -302,6 +301,40 @@ async def show_table(callback: types.CallbackQuery) -> None:
             await callback.message.answer(f"```\n{part}\n```", parse_mode="Markdown")
     else:
         await callback.message.answer(f"```\n{table_text}\n```", parse_mode="Markdown", reply_markup=get_main_keyboard())
+    await callback.answer()
+
+
+@bot_router.callback_query(F.data == "action:show_table_pretty")
+async def show_table_pretty(callback: types.CallbackQuery) -> None:
+    """Generate a pretty HTML table and send it as a file to the user."""
+    try:
+        records = controller.get_all_networks()
+    except Exception as exc:
+        logger.exception("Failed to read records from DB")
+        await callback.message.answer(f"❌ Ошибка при получении таблицы: {exc}")
+        await callback.answer()
+        return
+
+    if not records:
+        await callback.message.answer("Таблица пуста. Добавьте данные через '➕ Новое заполнение'.")
+        await callback.answer()
+        return
+
+    html = render_html_table(records, title="Таблица WiFi-сетей")
+    # send as in-memory file
+    from io import BytesIO
+
+    bio = BytesIO()
+    bio.write(html.encode('utf-8'))
+    bio.seek(0)
+    filename = "wifi_table.html"
+    try:
+        await callback.message.answer_document(types.InputFile(bio, filename=filename), reply_markup=get_main_keyboard())
+    except Exception:
+        # fallback: send as text (may be large)
+        await callback.message.answer("Не удалось отправить файл, отправляю как текст.")
+        await callback.message.answer(f"```\n{_format_records_table(records)}\n```", parse_mode="Markdown")
+
     await callback.answer()
 
 
