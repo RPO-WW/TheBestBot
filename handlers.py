@@ -130,12 +130,10 @@ def _prepare_wifi_data(data: Dict[str, Any]) -> Dict[str, Any]:
 
 async def _process_single_wifi_record(data: Dict[str, Any], message: types.Message, state: FSMContext) -> Optional[str]:
     prepared_data = _prepare_wifi_data(data)
-<<<<<<< HEAD
     is_valid, error_msg = _validate_wifi_data(prepared_data)
     if not is_valid:
         await message.answer(f"❌ Ошибка валидации данных: {error_msg}", reply_markup=get_main_keyboard())
         return None
-=======
 
     # Глобальный словарь (вне функции)
     error_messages_sent = {}
@@ -151,7 +149,6 @@ async def _process_single_wifi_record(data: Dict[str, Any], message: types.Messa
     else:
         # Сбрасываем флаг при успешной валидации
         error_messages_sent[chat_id] = False
->>>>>>> bfabc4fa7538bc8046eea3f0dd66337ef7fcdde1
 
     try:
         network = controller.build_network(prepared_data)
@@ -159,20 +156,17 @@ async def _process_single_wifi_record(data: Dict[str, Any], message: types.Messa
         if bssid:
             return bssid
         else:
-<<<<<<< HEAD
             await message.answer("❌ Не удалось сохранить данные в БД.", reply_markup=get_main_keyboard())
             return None
     except Exception as e:
         logger.exception("Error processing WiFi record")
         await message.answer(f"❌ Ошибка при обработке данных: {e}", reply_markup=get_main_keyboard())
         return None
-=======
             return False
 
     except Exception as e:
         logger.exception("Error processing WiFi record")
         return False
->>>>>>> bfabc4fa7538bc8046eea3f0dd66337ef7fcdde1
 
 
 async def _process_multiple_wifi_records(records: List[Dict[str, Any]], message: types.Message) -> None:
@@ -217,7 +211,6 @@ async def _process_json_file_content(content: str, message: types.Message, state
         await message.answer(f"❌ Ошибка парсинга JSON: {e}", reply_markup=get_main_keyboard())
         return
 
-<<<<<<< HEAD
     if isinstance(parsed_data, list):
         await _process_multiple_wifi_records(parsed_data, message)
     elif isinstance(parsed_data, dict):
@@ -226,7 +219,6 @@ async def _process_json_file_content(content: str, message: types.Message, state
             await state.update_data(bssid=bssid)
             await message.answer("🏢 Введите номер павильона:")
             await state.set_state(Form.waiting_for_pavilion)
-=======
     # Определяем тип данных: одиночная запись или массив записей
     # If the parsed JSON matches the example sentinel values, inform user it's only an example
     def _is_example_payload(obj) -> bool:
@@ -268,7 +260,6 @@ async def _process_json_file_content(content: str, message: types.Message, state
         success = await _process_single_wifi_record(parsed_data, message)
         if success:
             await message.answer("✅ Данные из файла успешно сохранены в таблицу!", reply_markup=get_main_keyboard())
->>>>>>> bfabc4fa7538bc8046eea3f0dd66337ef7fcdde1
     else:
         await message.answer("❌ Неподдерживаемый формат JSON. Ожидается объект или массив.", reply_markup=get_main_keyboard())
 
@@ -386,7 +377,6 @@ async def handle_text_or_file(message: types.Message, state: FSMContext) -> None
         await message.answer(f"❌ Некорректный JSON: {e}", reply_markup=get_main_keyboard())
         return
 
-<<<<<<< HEAD
     if isinstance(parsed_data, list):
         await _process_multiple_wifi_records(parsed_data, message)
     elif isinstance(parsed_data, dict):
@@ -395,7 +385,6 @@ async def handle_text_or_file(message: types.Message, state: FSMContext) -> None
             await state.update_data(bssid=bssid)
             await message.answer("🏢 Введите номер павильона:")
             await state.set_state(Form.waiting_for_pavilion)
-=======
     # Определяем тип данных: одиночная запись или массив записей
     def _is_example_payload(obj) -> bool:
         if not isinstance(obj, dict):
@@ -429,7 +418,6 @@ async def handle_text_or_file(message: types.Message, state: FSMContext) -> None
         success = await _process_single_wifi_record(parsed_data, message)
         if success:
             await message.answer("✅ Данные успешно сохранены в таблицу!", reply_markup=get_main_keyboard())
->>>>>>> bfabc4fa7538bc8046eea3f0dd66337ef7fcdde1
     else:
         await message.answer("❌ Неподдерживаемый формат JSON. Ожидается объект или массив.", reply_markup=get_main_keyboard())
 
