@@ -265,12 +265,12 @@ async def show_table(callback: types.CallbackQuery) -> None:
         for part in parts:
             await callback.message.answer(f"```\n{part}\n```", parse_mode="Markdown")
         # after sending parts, provide an inline export button
-        export_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🖼 Скачать HTML", callback_data="action:show_table_pretty")]])
+        export_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🖼 Скачать JSON", callback_data="action:show_table_pretty")]])
         await callback.message.answer("Полная таблица слишком большая для одного сообщения. Вы можете скачать её целиком:", reply_markup=export_kb)
         await callback.message.answer("", reply_markup=get_main_keyboard())
     else:
         # attach an inline button to allow exporting the full table as a styled HTML
-        export_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🖼 Скачать HTML", callback_data="action:show_table_pretty")]])
+        export_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🖼 Скачать JSON", callback_data="action:show_table_pretty")]])
         await callback.message.answer(f"```\n{table_text}\n```", parse_mode="Markdown", reply_markup=export_kb)
     await callback.answer()
 
@@ -291,23 +291,26 @@ async def show_table_pretty(callback: types.CallbackQuery) -> None:
         await callback.answer()
         return
 
-    html = render_html_table(records, title="Таблица WiFi-сетей")
-    # send as in-memory file
+    # Prepare JSON export (send the same JSON that users upload)
     from io import BytesIO
+    try:
+        json_bytes = json.dumps(records, ensure_ascii=False, indent=2).encode('utf-8')
+    except Exception as e:
+        logger.exception("Failed to serialize records to JSON")
+        await callback.message.answer("❌ Не удалось сериализовать таблицу в JSON.")
+        await callback.answer()
+        return
 
     bio = BytesIO()
-    bio.write(html.encode('utf-8'))
+    bio.write(json_bytes)
     bio.seek(0)
-    filename = "wifi_table.html"
+    filename = "wifi_table.json"
     try:
-        # prefer bot.send_document with explicit chat_id to avoid context issues
         await callback.message.bot.send_document(chat_id=callback.message.chat.id, document=types.InputFile(bio, filename=filename))
-        # also send main keyboard afterwards
-        await callback.message.answer("Готово — файл отправлен.", reply_markup=get_main_keyboard())
-    except Exception as e:
-        logger.exception("Failed to send HTML document to user")
-        # fallback: send as text (may be large)
-        await callback.message.answer("❌ Не удалось отправить файл. Отправляю таблицу как текст:")
+        await callback.message.answer("Готово — JSON файл отправлен.", reply_markup=get_main_keyboard())
+    except Exception:
+        logger.exception("Failed to send JSON document to user")
+        await callback.message.answer("❌ Не удалось отправить JSON файл. Отправляю таблицу как текст:")
         await callback.message.answer(f"```\n{_format_records_table(records)}\n```", parse_mode="Markdown")
 
     await callback.answer()
