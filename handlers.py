@@ -67,7 +67,7 @@ def get_main_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="➕ Новое заполнение", callback_data="action:new_entry"),
         ],
         [
-            InlineKeyboardButton(text=" Инструкция", callback_data="action:instructions"),
+            InlineKeyboardButton(text="📖 Инструкция", callback_data="action:instructions"),
         ]
     ])
 
