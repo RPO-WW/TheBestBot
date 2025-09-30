@@ -54,20 +54,25 @@ class Controller:
             except Exception:
                 pass
 
+        # Валидация frequency
         try:
             frequency = int(norm['frequency'])
-            if frequency != 0:
+            if frequency <= 0:
                 raise ValueError("Frequency должна быть положительным числом")
         except (ValueError, KeyError) as e:
             logger.error(f"Ошибка валидации frequency: {e}")
             raise ValueError(f"Некорректное значение frequency: {e}")
 
+        # Валидация rssi
         try:
             rssi = int(norm['rssi'])
+            if rssi > 0 or rssi < -100:
+                raise ValueError("RSSI должен быть в диапазоне от -100 до 0")
         except (ValueError, KeyError) as e:
             logger.error(f"Ошибка валидации rssi: {e}")
             raise ValueError(f"Некорректное значение rssi: {e}")
 
+        # Валидация timestamp
         try:
             timestamp = int(norm['timestamp'])
             if timestamp <= 0:
@@ -77,7 +82,7 @@ class Controller:
             raise ValueError(f"Некорректное значение timestamp: {e}")
 
         return WiFiNetwork(
-            bssid=norm.get('bssid', ""),
+            bssid=str(norm.get('bssid', "")),
             frequency=frequency,
             rssi=rssi,
             ssid=str(norm.get('ssid', '')),
