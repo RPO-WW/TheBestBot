@@ -40,46 +40,38 @@ class Controller:
 
     def build_network(self, data: Dict[str, Any]) -> WiFiNetwork:
         norm = dict(data)
+
+        # Нормализация альтернативных имён полей
         if 'frequency' not in norm and 'frequency_mhz' in norm:
             norm['frequency'] = norm['frequency_mhz']
         if 'channel_bandwidth' not in norm and 'channel_bandwidth_mhz' in norm:
             try:
                 bw = int(norm['channel_bandwidth_mhz'])
                 norm['channel_bandwidth'] = str(bw)
-            except Exception:
+            except (ValueError, TypeError):
                 norm['channel_bandwidth'] = str(norm['channel_bandwidth_mhz'])
-        if 'timestamp' in norm and isinstance(norm['timestamp'], int) and norm['timestamp'] > 10**12:
-            try:
-                norm['timestamp'] = int(norm['timestamp'] // 1000)
-            except Exception:
-                pass
 
-        # Валидация frequency
-        try:
-            frequency = int(norm['frequency'])
-            if frequency <= 0:
-                raise ValueError("Frequency должна быть положительным числом")
-        except (ValueError, KeyError) as e:
-            logger.error(f"Ошибка валидации frequency: {e}")
-            raise ValueError(f"Некорректное значение frequency: {e}")
+        # Нормализация timestamp (если в миллисекундах)
+        if 'timestamp' in norm:
+            ts = norm['timestamp']
+            if isinstance(ts, (int, float)) and ts > 10**12:  # предполагаем миллисекунды
+                norm['timestamp'] = int(ts // 1000)
 
-        # Валидация rssi
+        # Приведение типов (без валидации — это делает БД)
         try:
-            rssi = int(norm['rssi'])
-            if rssi > 0 or rssi < -100:
-                raise ValueError("RSSI должен быть в диапазоне от -100 до 0")
-        except (ValueError, KeyError) as e:
-            logger.error(f"Ошибка валидации rssi: {e}")
-            raise ValueError(f"Некорректное значение rssi: {e}")
+            frequency = int(norm.get('frequency', 0))
+        except (ValueError, TypeError):
+            frequency = 0
 
-        # Валидация timestamp
         try:
-            timestamp = int(norm['timestamp'])
-            if timestamp <= 0:
-                raise ValueError("Timestamp должен быть положительным числом")
-        except (ValueError, KeyError) as e:
-            logger.error(f"Ошибка валидации timestamp: {e}")
-            raise ValueError(f"Некорректное значение timestamp: {e}")
+            rssi = int(norm.get('rssi', 0))
+        except (ValueError, TypeError):
+            rssi = 0
+
+        try:
+            timestamp = int(norm.get('timestamp', 0))
+        except (ValueError, TypeError):
+            timestamp = 0
 
         return WiFiNetwork(
             bssid=str(norm.get('bssid', "")),
@@ -110,22 +102,30 @@ class Controller:
             logger.error("Ошибка сохранения сети в БД")
             return None
 
-    def update_network(self, bssid: str, password: str = "", pavilion_number: int = 0) -> bool:
+    def update_network(self, bssid: str, password: Optional[str] = None, pavilion_number: Optional[int] = None) -> bool:
         existing = self.db.read(bssid)
         if not existing:
             logger.error(f"Запись с BSSID {bssid} не найдена для обновления.")
             return False
 
+        # Берём существующие данные и обновляем только нужные поля
+        record = existing[0]
         update_data = {
             'bssid': bssid,
-            'frequency': existing[0]['frequency'],
-            'rssi': existing[0]['rssi'],
-            'ssid': existing[0]['ssid'],
-            'timestamp': existing[0]['timestamp'],
-            'channel_bandwidth': existing[0]['channel_bandwidth'],
-            'capabilities': existing[0]['capabilities'],
+            'frequency': record['frequency'],
+            'rssi': record['rssi'],
+            'ssid': record['ssid'],
+            'timestamp': record['timestamp'],
+            'channel_bandwidth': record['channel_bandwidth'],
+            'capabilities': record['capabilities'],
             'password': password,
             'pavilion_number': pavilion_number,
+            # Остальные поля оставляем как есть
+            'dns_server': record.get('dns_server'),
+            'gateway': record.get('gateway'),
+            'my_ip': record.get('my_ip'),
+            'signal_level': record.get('signal_level'),
+            'floor': record.get('floor'),
         }
 
         success = self.db.update(bssid, update_data)
