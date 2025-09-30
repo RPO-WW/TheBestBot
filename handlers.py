@@ -143,7 +143,8 @@ def _is_example_payload(obj) -> bool:
     return False
 
 
-async def _process_single_wifi_record(data: Dict[str, Any], message: types.Message, state: FSMContext) -> Optional[str]:
+async def _process_single_wifi_record(data: Dict[str, Any], message: types.Message) -> Optional[str]:
+    """Process a single WiFi record and return BSSID if saved, else None."""
     prepared_data = _prepare_wifi_data(data)
     is_valid, error_msg = _validate_wifi_data(prepared_data)
     if not is_valid:
@@ -153,11 +154,7 @@ async def _process_single_wifi_record(data: Dict[str, Any], message: types.Messa
     try:
         network = controller.build_network(prepared_data)
         bssid = controller.save_network(network)
-        if bssid:
-            return bssid
-        else:
-            await message.answer("❌ Не удалось сохранить данные в БД.", reply_markup=get_main_keyboard())
-            return None
+        return bssid
     except Exception as e:
         logger.exception("Error processing WiFi record")
         await message.answer(f"❌ Ошибка при обработке данных: {e}", reply_markup=get_main_keyboard())
@@ -182,7 +179,7 @@ async def _process_multiple_wifi_records(records: List[Dict[str, Any]], message:
             continue
 
         try:
-            bssid = await _process_single_wifi_record(record, message, FSMContext(state=None))
+            bssid = await _process_single_wifi_record(record, message)
             if bssid:
                 success_count += 1
             else:
@@ -208,6 +205,7 @@ async def _process_json_content(parsed_data: Any, message: types.Message, state:
                 reply_markup=get_main_keyboard(),
             )
             return
+        # Массив → обрабатываем без FSM
         await _process_multiple_wifi_records(parsed_data, message)
     elif isinstance(parsed_data, dict):
         if _is_example_payload(parsed_data):
@@ -217,7 +215,8 @@ async def _process_json_content(parsed_data: Any, message: types.Message, state:
             )
             return
 
-        bssid = await _process_single_wifi_record(parsed_data, message, state)
+        # Одиночный объект → обрабатываем и запускаем FSM
+        bssid = await _process_single_wifi_record(parsed_data, message)
         if bssid:
             await state.update_data(bssid=bssid)
             await message.answer("🏢 Введите номер павильона:")
@@ -264,12 +263,10 @@ async def show_table(callback: types.CallbackQuery) -> None:
         parts = [table_text[i:i+4000] for i in range(0, len(table_text), 4000)]
         for part in parts:
             await callback.message.answer(f"```\n{part}\n```", parse_mode="Markdown")
-        # after sending parts, provide an inline export button
         export_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🖼 Скачать JSON", callback_data="action:show_table_pretty")]])
         await callback.message.answer("Полная таблица слишком большая для одного сообщения. Вы можете скачать её целиком:", reply_markup=export_kb)
         await callback.message.answer("", reply_markup=get_main_keyboard())
     else:
-        # attach an inline button to allow exporting the full table as a styled HTML
         export_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🖼 Скачать JSON", callback_data="action:show_table_pretty")]])
         await callback.message.answer(f"```\n{table_text}\n```", parse_mode="Markdown", reply_markup=export_kb)
     await callback.answer()
@@ -277,7 +274,6 @@ async def show_table(callback: types.CallbackQuery) -> None:
 
 @bot_router.callback_query(F.data == "action:show_table_pretty")
 async def show_table_pretty(callback: types.CallbackQuery) -> None:
-    """Generate a pretty HTML table and send it as a file to the user."""
     try:
         records = controller.get_all_networks()
     except Exception as exc:
@@ -291,7 +287,6 @@ async def show_table_pretty(callback: types.CallbackQuery) -> None:
         await callback.answer()
         return
 
-    # Prepare JSON export (send the same JSON that users upload)
     from io import BytesIO
     try:
         json_bytes = json.dumps(records, ensure_ascii=False, indent=2).encode('utf-8')
@@ -306,7 +301,7 @@ async def show_table_pretty(callback: types.CallbackQuery) -> None:
     bio.seek(0)
     filename = "wifi_table.json"
     try:
-        await callback.message.bot.send_document(chat_id=callback.message.chat.id, document=types.InputFile(bio, filename=filename))
+        await callback.message.bot.send_document(chat_id=callback.message.chat.id, document=types.BufferedInputFile(bio.read(), filename=filename))
         await callback.message.answer("Готово — JSON файл отправлен.", reply_markup=get_main_keyboard())
     except Exception:
         logger.exception("Failed to send JSON document to user")
